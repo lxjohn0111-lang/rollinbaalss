@@ -44,6 +44,7 @@ export const PHYSICS = [
       pad(B, 0, 3, W);
       B.ribbon((u) => ({ x: 0, y: 0, d: 3 + 3 * u, w: lerp(W, w, smooth(u)) }), 6, W, 0.5, B.m.deck, {});
       B.deck(0, 6, 6 + len, w, { mat: B.m.ice, friction: 0.02, surface: { type: 'ice' }, edges: true, edgeMat: B.m.glow });
+      for (const s of [-1, 1]) B.box(s * (w / 2 + 0.12), 0.18, 6 + len / 2, 0.24, 0.36, len, B.m.glass, { friction: 0.02, restitution: 0.4 });
       const blocks = [];
       for (let i = 0; i < (p.blocks || 6); i++) {
         const d = 11 + i * (len - 8) / (p.blocks || 6), x = (rng() - 0.5) * (w - 2.2);
@@ -77,10 +78,10 @@ export const PHYSICS = [
         }
         B.coin((clean - 1) * lw, 0.65, d0 + 1.9);
       }
-      boostPad(B, 0, 3 + len - 3, 3 + len, 3.2, 1.45, 1.4);
+      boostPad(B, 0, 0.4, 3.4, W - 0.2, 1.55, 3.4);
       const rfn = (u) => ({ x: 0, y: 1.6 * u * u, d: 3 + len + 5 * u, h: 0, w: W });
       B.ribbon(rfn, 16, W, 0.5, B.m.deckAlt, { path: true });
-      const gap = 6.5, ld = 3 + len + 5 + gap;
+      const gap = 5.5, ld = 3 + len + 5 + gap;
       B.deck(0, ld, ld + 14, 6, { y: -0.8, edges: true });
       B.pathLine(0, 3 + len + 5, 0, ld, 1.6, -0.8);
       B.coinArc(0, 3 + len + 5.5, 0, ld - 0.5, 4, 2.6, 1.0);

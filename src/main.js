@@ -8,11 +8,12 @@ import { SaveData } from './core/save.js';
 import { AudioEngine } from './core/audio.js';
 import { UI } from './ui/ui.js';
 import { REGISTRY, OBSTACLE_IDS } from './game/obstacles/index.js';
-import { LEVELS } from './game/levels.js';
+import { LEVELS, buildLevelDefs } from './game/levels.js';
 import { EndlessGenerator } from './game/endless.js';
 
 const params = Object.fromEntries(new URLSearchParams(location.search));
 const save = new SaveData();
+if (params.unlock === 'all') { save.data.unlocked = LEVELS.length; save.flush(); }
 const audio = new AudioEngine();
 audio.setVolumes(save.data.settings.music, save.data.settings.sfx);
 const ui = new UI(document.getElementById('ui'), save, audio);
@@ -20,6 +21,7 @@ const game = new Game({ container: document.getElementById('game'), save, audio,
 ui.setGame(game);
 window.__game = game;
 window.__modules = { REGISTRY, OBSTACLE_IDS, LEVELS, EndlessGenerator };
+window.__levelDefs = buildLevelDefs;
 
 ui.showLoading('SkyRoll');
 game.init().then(async () => {

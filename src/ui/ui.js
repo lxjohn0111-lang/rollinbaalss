@@ -444,7 +444,7 @@ export class UI {
       <div class="res-head"><small>LEVEL ${r.level + 1} · ${lvl ? lvl.name : ''}</small><h1>LEVEL COMPLETE!</h1></div>
       <div class="res-stars">${[0, 1, 2].map((k) => `<span class="rs ${r.stars > k ? 'on' : ''}" style="--d:${0.35 + k * 0.35}s">${ICON.star}</span>`).join('')}</div>
       <div class="res-rows">
-        <div class="rr"><span><span class="ic">${ICON.coin}</span> Coins</span><b>${r.coins} / ${r.totalCoins}</b></div>
+        <div class="rr"><span><span class="ic">${ICON.coin}</span> Coins</span><b>${r.picked} / ${r.totalCoins}${r.coins > r.picked ? ` <small class="bonus-c">+${r.coins - r.picked} bonus</small>` : ''}</b></div>
         <div class="rr"><span><span class="ic">${ICON.gem}</span> Gems</span><b>${r.gems.length} / ${r.totalGems}</b></div>
         <div class="rr"><span>Time</span><b>${fmtTime(r.time)}</b></div>
         <div class="rr"><span>Falls</span><b>${r.falls}</b></div>

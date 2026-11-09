@@ -20,7 +20,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1424; col
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
 #ui .loading, #ui .modal-back, #ui .screen.modal { pointer-events: auto; }
 .hidden { display: none !important; }
-.ic { display: inline-flex; width: 1em; height: 1em; vertical-align: -0.12em; }
+.ic { display: inline-flex; flex: none; width: 1em; height: 1em; vertical-align: -0.12em; }
 .ic svg { width: 100%; height: 100%; fill: currentColor; }
 
 /* ---------------------------------------------------------------- buttons */
@@ -330,3 +330,4 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 7px; margin: 0 2px; b
   .title { font-size: 28px; }
   .tc { width: 78px; height: 78px; bottom: calc(14px + var(--safe-b)); } .tc-right { left: calc(110px + var(--safe-l)); } .tc-jump { width: 84px; height: 84px; }
 }
+.rr b small.bonus-c { font-family: var(--font-body); font-weight: 800; font-size: 13px; color: var(--gold-1); }

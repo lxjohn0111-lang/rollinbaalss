@@ -10,7 +10,10 @@ await page.goto('http://localhost:5173/?test=1&q=low&bot=1');
 await page.waitForFunction(() => window.__ready, null, { timeout: 60000 });
 const out = await page.evaluate(({ id, secs, every, params }) => {
   const g = window.__game;
-  g.startSandbox([{ type: id, params: JSON.parse(params) }]);
+  if (id.startsWith('level:')) { const lv = Number(id.slice(6)) - 1; g.mode = 'level'; g.levelIndex = lv; const L = window.__modules.LEVELS[lv]; const m = window.__levelDefs(L); g.buildCourse(L.theme, m, { speed: L.speed, palette: L.palette }); g.run = g.newRun({}); g.state = 'playing'; }
+  else g.startSandbox([{ type: id, params: JSON.parse(params) }]);
+  const skip = Number(JSON.parse(params).skipTo || 0);
+  while (skip && g.ball.s < skip && g.time < 300) { g.fixedStep(1 / 120, g.state === 'playing' ? g.bot.compute(1 / 120) : { steer: 0 }); g.frameUpdate(1 / 120); }
   const lines = [];
   const per = Math.round(every / (1 / 120));
   let k = 0;
@@ -21,8 +24,8 @@ const out = await page.evaluate(({ id, secs, every, params }) => {
     if (i % 2 === 0) g.frameUpdate(1 / 60);
     if (i % per === 0) {
       const sec = g.course.sectionAtS(g.ball.s);
-      const l = g.course.sections[1].B.toLocal(g.ball.curPos);
-      lines.push(`t=${(i / 120).toFixed(2)} st=${g.state} sec=${sec.type} d=${l.d.toFixed(2)} x=${l.x.toFixed(2)} y=${l.y.toFixed(2)} v=${g.ball.speed.toFixed(1)} vy=${g.ball.vel.y.toFixed(1)} gr=${g.ball.grounded ? 1 : 0} type=${g.ball.groundType} steer=${inp.steer?.toFixed(2)} jump=${inp.jump ? 1 : 0} tgt=${g.bot.lastTarget.toFixed(2)} lat=${g.ball.lat.toFixed(2)} falls=${g.run.falls}`);
+      const l = sec.B.toLocal(g.ball.curPos);
+      lines.push(`t=${(i / 120).toFixed(2)} st=${g.state} sec=${sec.index}:${sec.type} s=${g.ball.s.toFixed(1)} d=${l.d.toFixed(2)} x=${l.x.toFixed(2)} y=${l.y.toFixed(2)} v=${g.ball.speed.toFixed(1)} vy=${g.ball.vel.y.toFixed(1)} gr=${g.ball.grounded ? 1 : 0} type=${g.ball.groundType} steer=${inp.steer?.toFixed(2)} jump=${inp.jump ? 1 : 0} tgt=${g.bot.lastTarget.toFixed(2)} lat=${g.ball.lat.toFixed(2)} falls=${g.run.falls}`);
     }
     if (g.state === 'finishing') { lines.push('FINISHED'); break; }
   }

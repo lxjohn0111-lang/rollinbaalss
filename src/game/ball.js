@@ -152,7 +152,7 @@ export class Ball {
     // --- surface behaviour
     let kF = TUNING.kF, kL = TUNING.kL, latAcc = TUNING.latAcc, speedSurf = 1;
     const type = grounded ? this.groundType : null;
-    if (type === 'ice') { kF = 0.35; kL = 1.3; latAcc = 6; }
+    if (type === 'ice') { kF = 0.4; kL = 1.9; latAcc = 8; }
     else if (type === 'sticky') { speedSurf = 0.38; kF = 6; this.vel.multiplyScalar(1 - 3.2 * dt); body.setLinvel({ x: this.vel.x, y: this.vel.y, z: this.vel.z }, true); }
     else if (type === 'boost') { this.boost(gInfo.power || 1.75, gInfo.time || 1.3); }
     else if (type === 'conveyor') {

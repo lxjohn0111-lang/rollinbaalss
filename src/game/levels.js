@@ -159,7 +159,7 @@ export const LEVELS = [
     palette: { rail: '#19f6ff', accent: '#ff2bd6' },
     intro: ['turbo_slalom', 'neon_tunnel', 'laser_grid'],
     sections: [
-      r(8), ['turbo_slalom'], c(30, { r: 22 }), ['launch_ramp', { gap: 8 }], cp, ['neon_tunnel', { gem: true }], ['mega_hoop', { gap: 18 }],
+      r(8), ['turbo_slalom', { gemAt: [0, 1.0, 30] }], c(30, { r: 22 }), ['launch_ramp', { gap: 8 }], cp, ['neon_tunnel'], ['mega_hoop', { gap: 18, gem: true }],
       c(-30, { r: 22 }), ['wave_track', { amp: 1.3 }], cp, ['laser_grid', { period: 2.6 }],
     ],
   },

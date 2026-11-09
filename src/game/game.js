@@ -59,6 +59,8 @@ export class Game {
     if (this.ball.skinId) this.ball.setSkin(this.save.data.skin, s.quality);
   }
 
+  sfx(name, k) { if (this.audio && this.mode !== 'demo' && !this.headless) this.audio.sfx(name, k); }
+
   // ------------------------------------------------------------ course lifecycle
   disposeCourse() {
     if (this.course) {
@@ -90,7 +92,7 @@ export class Game {
     this.ball.attach(course, p, this.sample.t);
     this.bot.reset();
     this.cam.reset(p, this.sample.t);
-    course.env.update(this.engine.camera.position, 0);
+    course.env.update(this.engine.camera.position, 0, true);
     return course;
   }
 
@@ -108,7 +110,7 @@ export class Game {
   }
 
   newRun(extra = {}) {
-    return { coins: 0, gems: [], falls: 0, time: 0, blocks: 0, sets: 0, bonus: 0, checkpoint: null, distance: 0, score: 0, finished: false, ...extra };
+    return { coins: 0, picked: 0, gems: [], falls: 0, time: 0, blocks: 0, sets: 0, bonus: 0, checkpoint: null, distance: 0, score: 0, finished: false, ...extra };
   }
 
   startLevel(index) {
@@ -139,6 +141,7 @@ export class Game {
       this.useBot = !!this.params.bot;
       const seed = this.params.seed ? Number(this.params.seed) : (Math.random() * 1e9) | 0;
       this.endless = new EndlessGenerator(seed);
+      this.endlessQueue = [];
       const first = this.endless.initial();
       this.buildCourse(this.endless.theme, first, { speed: 10 });
       this.run = this.newRun({ endless: true, seed });
@@ -197,7 +200,7 @@ export class Game {
     this.dieReason = reason;
     if (this.mode !== 'demo') { this.run.falls++; this.save.data.stats.falls++; }
     this.cam.mode = reason === 'fall' ? 'fall' : 'follow';
-    this.audio && this.audio.sfx('fail');
+    this.sfx('fail');
     if (reason !== 'fall') { this.effects.impact(this.ball.curPos, '#ff6040'); this.cam.shake(0.8); }
     if (this.mode === 'level') this.ui.flash(reason === 'fall' ? 'OUCH!' : reason === 'crushed' ? 'CRUSHED!' : reason === 'zapped' ? 'ZAPPED!' : reason === 'smashed' ? 'SMASHED!' : 'OOPS!');
   }
@@ -215,7 +218,7 @@ export class Game {
     this.bot.reset();
     this.state = 'playing';
     this.ui.respawnFade();
-    if (manual) this.audio && this.audio.sfx('respawn');
+    if (manual) this.sfx('respawn');
   }
 
   endRun() {
@@ -237,19 +240,19 @@ export class Game {
     this.state = 'finishing';
     this.finishT = 0;
     this.effects.confettiBurst(this.ball.curPos.clone().addScaledVector(this.ball.fwd, 6).add(new THREE.Vector3(0, 2, 0)));
-    this.audio && this.audio.sfx('finish');
+    this.sfx('finish');
     this.cam.mode = 'orbit';
     if (this.mode === 'demo') return;
     const lvl = LEVELS[this.levelIndex];
     const r = this.run;
-    const coinPct = r.totalCoins ? r.coins / r.totalCoins : 1;
+    const coinPct = r.totalCoins ? Math.min(1, r.picked / r.totalCoins) : 1;
     const par = lvl && lvl.par ? lvl.par : Math.round(this.course.finishS / this.course.baseSpeed * 1.25 + 10);
     const timeBonus = Math.max(0, Math.round((par - r.time) * 15));
     const noFall = r.falls === 0 ? 500 : 0;
     const score = r.coins * 10 + r.gems.length * 250 + timeBonus + noFall + r.bonus;
     let stars = 1; if (coinPct >= 0.6) stars = 2; if (coinPct >= 0.85 && r.falls <= 1) stars = 3;
     r.score = score; r.stars = stars;
-    const result = { level: this.levelIndex, score, coins: r.coins, totalCoins: r.totalCoins, gems: r.gems, totalGems: r.totalGems, time: r.time, falls: r.falls, stars, timeBonus, noFall, bonus: r.bonus, completionBonus: 50 + this.levelIndex * 10 };
+    const result = { level: this.levelIndex, score, coins: r.coins, picked: r.picked, totalCoins: r.totalCoins, gems: r.gems, totalGems: r.totalGems, time: r.time, falls: r.falls, stars, timeBonus, noFall, bonus: r.bonus, completionBonus: 50 + this.levelIndex * 10 };
     if (this.levelIndex >= 0) {
       result.prev = this.save.levelRecord(this.levelIndex);
       result.newBest = this.save.recordLevel(this.levelIndex, result);
@@ -269,7 +272,7 @@ export class Game {
     this.run.bonus += coins * 10;
     this.run.coins += coins;
     this.ui.popup(`${label} +${coins}`, 'gold');
-    this.audio && this.audio.sfx('bonus');
+    this.sfx('bonus');
   }
 
   // ------------------------------------------------------------ headless simulation (tests)
@@ -346,22 +349,20 @@ export class Game {
       if (!cp.active && ball.s >= cp.s && ball.grounded) {
         cp.active = true; this.run.checkpoint = cp;
         if (cp.flag) cp.flag.set(true);
-        if (this.mode !== 'demo') { this.ui.popup('CHECKPOINT', 'green'); this.audio && this.audio.sfx('checkpoint'); this.ui.checkpointReached(c.checkpoints.indexOf(cp)); }
+        if (this.mode !== 'demo') { this.ui.popup('CHECKPOINT', 'green'); this.sfx('checkpoint'); this.ui.checkpointReached(c.checkpoints.indexOf(cp)); }
       }
     }
     // finish
     if (this.mode !== 'endless' && ball.s >= c.finishS) this.finishLevel();
-    // endless streaming
-    if (this.mode === 'endless') this.streamEndless();
   }
 
   streamEndless() {
     const c = this.course, ball = this.ball;
-    let guard = 0;
-    while (c.path.length - ball.s < 240 && guard++ < 3) {
-      const defs = this.endless.next(ball.s);
-      for (const d of defs) c.addSection(d, REGISTRY);
-    }
+    // amortized streaming: plan ahead into a queue, build at most one section per frame
+    if (!this.endlessQueue) this.endlessQueue = [];
+    const ahead = c.path.length - ball.s;
+    if (!this.endlessQueue.length && ahead < 320) this.endlessQueue.push(...this.endless.next(ball.s));
+    if (this.endlessQueue.length && ahead < 380) c.addSection(this.endlessQueue.shift(), REGISTRY);
     for (const sec of c.sections) {
       if (!sec.removed && sec.s1 < ball.s - 140) c.removeSection(sec);
     }
@@ -375,27 +376,28 @@ export class Game {
       const k = Math.min(1, e.impact / 14);
       this.effects.landDust(ball.curPos, e.impact);
       this.cam.shake(0.15 + k * 0.5);
-      this.audio && this.audio.sfx('land', k);
+      this.sfx('land', k);
       if (e.air > 0.9 && this.state === 'playing' && this.mode !== 'demo') this.ui.popup(e.air > 1.5 ? 'HUGE AIR!' : 'NICE LANDING', 'blue');
-    } else if (e.type === 'jump') { this.audio && this.audio.sfx('jump'); }
-    else if (e.type === 'spring') { this.audio && this.audio.sfx('spring'); this.cam.shake(0.3); }
-    else if (e.type === 'bump') { this.audio && this.audio.sfx('bump'); this.cam.shake(0.45); this.effects.impact(ball.curPos, '#ff3b6b'); }
+    } else if (e.type === 'jump') { this.sfx('jump'); }
+    else if (e.type === 'spring') { this.sfx('spring'); this.cam.shake(0.3); }
+    else if (e.type === 'bump') { this.sfx('bump'); this.cam.shake(0.45); this.effects.impact(ball.curPos, '#ff3b6b'); }
     else if (e.type === 'hazard') { if (e.info.kill) this.killBall(e.info.kill); }
   }
 
   frameUpdate(dt) {
     const c = this.course, ball = this.ball;
+    if (this.mode === 'endless' && this.state === 'playing') this.streamEndless();
     // coins & gems
     c.coins.update(this.time, dt, ball.curPos, (id, x, y, z) => {
-      if (this.mode !== 'demo') { this.run.coins++; this.save.data.stats.coinsCollected++; }
+      if (this.mode !== 'demo') { this.run.coins++; this.run.picked++; this.save.data.stats.coinsCollected++; }
       this.effects.coinBurst(this.tmp.set(x, y, z));
-      this.audio && this.audio.sfx('coin');
+      this.sfx('coin');
     });
     for (const g of c.gems) {
       if (g.taken || !g.mesh.parent) continue;
       if (g.pos.distanceToSquared(ball.curPos) < 1.3) {
         g.taken = true; c.root.remove(g.mesh); this.effects.gemBurst(g.pos);
-        if (this.mode !== 'demo') { this.run.gems.push(g.id); this.ui.popup('GEM FOUND!', 'purple'); this.audio && this.audio.sfx('gem'); }
+        if (this.mode !== 'demo') { this.run.gems.push(g.id); this.ui.popup('GEM FOUND!', 'purple'); this.sfx('gem'); }
       }
     }
     // block structures
@@ -411,7 +413,7 @@ export class Game {
             const moved = Math.hypot(t.x - b.p0.x, t.y - b.p0.y, t.z - b.p0.z);
             const r = b.body.rotation();
             const tilt = 1 - Math.abs(new THREE.Quaternion(r.x, r.y, r.z, r.w).multiply(b.q0.clone().invert()).w);
-            if (moved > 0.6 || tilt > 0.04) { b.toppled = true; if (this.mode !== 'demo') { this.run.blocks++; this.save.data.stats.blocks++; } if (Math.random() < 0.5) this.audio && this.audio.sfx('block', Math.min(1, ball.speed / 12)); }
+            if (moved > 0.6 || tilt > 0.04) { b.toppled = true; if (this.mode !== 'demo') { this.run.blocks++; this.save.data.stats.blocks++; } if (Math.random() < 0.5) this.sfx('block', Math.min(1, ball.speed / 12)); }
           }
           if (b.toppled) n++;
         }
@@ -440,7 +442,7 @@ export class Game {
       const prog = this.mode === 'endless' ? 0 : Math.min(1, ball.s / c.finishS);
       this.ui.updateHUD({ progress: prog, coins: this.run.coins, distance: Math.floor(this.run.distance), jump: ball.jumpAllowed, time: this.run.time, score: this.mode === 'endless' ? Math.floor(this.run.distance * 2 + this.run.coins * 10 + this.run.bonus) : null, fps: this.fps });
     }
-    if (this.audio) this.audio.updateRolling(ball.grounded && this.state !== 'dying' ? ball.speed : 0, ball.groundType);
+    if (this.audio) this.audio.updateRolling(ball.grounded && this.state !== 'dying' && this.mode !== 'demo' ? ball.speed : 0, ball.groundType);
     if (this.mode !== 'demo' && this.state === 'playing') this.save.data.stats.distance += ball.speed * dt;
   }
 

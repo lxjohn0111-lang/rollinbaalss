@@ -41,10 +41,10 @@ export const THEMES = {
     name: 'Neon District',
     sky: { top: '#05061a', horizon: '#3a1659', bottom: '#120822', sun: '#c58cff', stars: 1 },
     sunDir: [-0.3, 0.55, 0.78], sunColor: '#9fb4ff', sunIntensity: 1.4,
-    hemi: ['#5d4bd8', '#1a0f2e', 0.9], fog: ['#1b0f33', 0.0021], exposure: 1.15, bloom: 0.75,
-    palette: { deck: '#6c6f86', deckAlt: '#5a5d72', deckSide: '#2a2c3a', rail: '#ff2bd6', accent: '#19f6ff', accent2: '#ffe84a', machine: '#7a5cff', concrete: '#4b4d5c', glow: '#19f6ff', blocks: ['#ff2bd6', '#19f6ff', '#ffe84a', '#7a5cff', '#3cff9a'] },
+    hemi: ['#6d5be0', '#1a0f2e', 1.1], fog: ['#1b0f33', 0.0021], exposure: 1.0, bloom: 0.42,
+    palette: { deck: '#8d92b6', deckAlt: '#787d9e', deckSide: '#2a2c3a', rail: '#ff2bd6', accent: '#19f6ff', accent2: '#ffe84a', machine: '#7a5cff', concrete: '#4b4d5c', glow: '#19f6ff', blocks: ['#ff2bd6', '#19f6ff', '#ffe84a', '#7a5cff', '#3cff9a'] },
     scenery: 'neon', ground: 'neon', support: 'steel', trackY: 52,
-    city: { styles: [0, 1, 2], tints: ['#2a2d3f', '#1f2233', '#32293f', '#262b3a'], glass: ['#16203a', '#22315a'], hMin: 30, hMax: 230, density: 0.9, night: 1 },
+    city: { styles: [0, 1, 2], tints: ['#2a2d3f', '#1f2233', '#32293f', '#262b3a'], glass: ['#16203a', '#22315a'], hMin: 30, hMax: 230, density: 0.9, night: 0.55, lit: '#ffb86b', lit2: '#7fd6ff' },
     music: { root: 50, tempo: 124, scale: 'minor', style: 'synth' },
   },
   alpine: {
@@ -68,10 +68,10 @@ export const THEMES = {
   },
   clouds: {
     name: 'Cloud Kingdom',
-    sky: { top: '#3c8ff0', horizon: '#e3f1ff', bottom: '#ffffff', sun: '#ffffff', stars: 0 },
-    sunDir: [-0.4, 0.78, -0.48], sunColor: '#fffaf0', sunIntensity: 3.4,
-    hemi: ['#e6f3ff', '#c9d9ea', 1.25], fog: ['#e6f1fc', 0.0012], exposure: 1.0, bloom: 0.3,
-    palette: { deck: '#f0d9b5', deckAlt: '#e4c89f', deckSide: '#a77f53', rail: '#ffffff', accent: '#ffb84a', accent2: '#5aa9ff', machine: '#ffd34d', concrete: '#e9edf2', glow: '#fff3a0', blocks: ['#ffffff', '#ffd34d', '#8fd0ff', '#ffa6c9', '#b6f7a0'] },
+    sky: { top: '#2a7de8', horizon: '#cfe5fb', bottom: '#eaf3fc', sun: '#ffffff', stars: 0 },
+    sunDir: [-0.4, 0.78, -0.48], sunColor: '#fff6e8', sunIntensity: 3.2,
+    hemi: ['#e6f3ff', '#b9cde6', 1.1], fog: ['#dceaf8', 0.0009], exposure: 0.92, bloom: 0.22,
+    palette: { deck: '#d09a5e', deckAlt: '#bf8a52', deckSide: '#8a5a32', rail: '#ff7a3d', accent: '#ffb84a', accent2: '#3f8ff0', machine: '#ffd34d', concrete: '#e9edf2', glow: '#fff3a0', blocks: ['#ff6b6b', '#ffd34d', '#4dabff', '#ff8ad0', '#6bdc7a'] },
     scenery: 'clouds', ground: 'clouds', support: 'none', trackY: 60,
     music: { root: 60, tempo: 92, scale: 'lydian', style: 'dream' },
   },
@@ -111,6 +111,8 @@ export class PathIndex {
   constructor(cell = 40) { this.cell = cell; this.map = new Map(); this.minY = Infinity; this.maxY = -Infinity; this.count = 0; }
   key(ix, iz) { return ix * 73856093 ^ iz * 19349663; }
   add(x, y, z) {
+    if (!this.box) this.box = { x0: x, x1: x, z0: z, z1: z };
+    else { this.box.x0 = Math.min(this.box.x0, x); this.box.x1 = Math.max(this.box.x1, x); this.box.z0 = Math.min(this.box.z0, z); this.box.z1 = Math.max(this.box.z1, z); }
     const ix = Math.floor(x / this.cell), iz = Math.floor(z / this.cell);
     const k = this.key(ix, iz);
     let a = this.map.get(k);
@@ -119,7 +121,8 @@ export class PathIndex {
     this.minY = Math.min(this.minY, y); this.maxY = Math.max(this.maxY, y);
     this.count++;
   }
-  clear() { this.map.clear(); this.count = 0; this.minY = Infinity; this.maxY = -Infinity; }
+  clear() { this.map.clear(); this.count = 0; this.minY = Infinity; this.maxY = -Infinity; this.box = null; }
+  takeBox() { const b = this.box; this.box = null; return b; }
   // returns {d, y} distance (horizontal) to nearest sample within radius
   nearest(x, z, radius) {
     const c = this.cell; const r = Math.ceil(radius / c);
@@ -228,7 +231,7 @@ function facadeMaterial(style, opts) {
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
         metalnessFactor = mix(metalnessFactor, uGM, win);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        totalEmissiveRadiance += lit * mix(uLit, uLit2, step(0.7, rnd)) * uNight * (0.8 + 0.6 * rnd);`);
+        totalEmissiveRadiance += lit * mix(uLit, uLit2, step(0.7, rnd)) * uNight * (0.45 + 0.4 * rnd);`);
   };
   m.customProgramCacheKey = () => 'facade' + style;
   return m;
@@ -313,7 +316,7 @@ function cloudSeaMaterial(theme) {
     fog: true, transparent: false,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       time: { value: 0 }, sunDir: { value: new THREE.Vector3(...theme.sunDir).normalize() },
-      lit: { value: new THREE.Color('#ffffff') }, shade: { value: new THREE.Color('#b8c8de') },
+      lit: { value: new THREE.Color('#f2f6fc') }, shade: { value: new THREE.Color('#93a9c8') },
     }]),
     vertexShader: `
       #include <fog_pars_vertex>
@@ -391,6 +394,7 @@ export class Environment {
     this.root.add(this.follow);
     this.pathIndex = new PathIndex(40);
     this.layers = [];
+    this.onDirty = [];
     this.disposables = [];
     this.time = 0;
     this.lastCell = null;
@@ -414,7 +418,7 @@ export class Environment {
     eng.sunDir.set(...th.sunDir).normalize();
     eng.hemi.color.set(th.hemi[0]); eng.hemi.groundColor.set(th.hemi[1]); eng.hemi.intensity = th.hemi[2];
     eng.renderer.toneMappingExposure = th.exposure;
-    eng.setBloom(th.bloom, th.bloom > 0.5 ? 0.7 : 0.86);
+    eng.setBloom(th.bloom, th.bloom > 0.4 ? 0.8 : 0.86);
     // Environment map from sky (+ a ground disc so reflections have a horizon)
     const envScene = new THREE.Scene();
     const envSky = new THREE.Mesh(new THREE.SphereGeometry(100, 32, 16), skyMaterial(th.sky, th.sunDir));
@@ -527,8 +531,9 @@ export class Environment {
     layer.update = (cam, t, force) => {
       const cx = Math.floor(cam.x / cell), cz = Math.floor(cam.z / cell);
       const key = cx + ',' + cz;
-      if (key === layer.lastKey && !force && !this.dirty) return;
+      if (key === layer.lastKey && !force) return;
       layer.lastKey = key;
+      layer.stale = false;
       const counts = meshes.map(() => 0);
       const emit = (mi, x, y, z, sx, sy, sz, rotY = 0, color = null) => {
         const m = meshes[mi];
@@ -546,6 +551,7 @@ export class Environment {
       meshes.forEach((m, i) => { m.count = counts[i]; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
     };
     layer.dispose = () => meshes.forEach((m) => { m.geometry.dispose(); m.dispose && m.dispose(); });
+    layer.grid = true;
     this.layers.push(layer);
     return layer;
   }
@@ -654,7 +660,7 @@ export class Environment {
     const cell = 180, radius = Math.max(2, Math.round(7 * Math.sqrt(q)));
     const cap = (2 * radius + 1) ** 2 * 3;
     const tex = T.softSprite('cloud').map;
-    const mat = billboardMaterial(tex, '#ffffff', 0.9, true);
+    const mat = billboardMaterial(tex, '#ffffff', this.theme.scenery === 'clouds' ? 0.7 : 0.85, true);
     const geo = new THREE.PlaneGeometry(1, 1);
     const im = new THREE.InstancedMesh(geo, mat, cap);
     im.renderOrder = 2;
@@ -670,8 +676,8 @@ export class Environment {
           let y = baseY + (hash2(ix, iz, 50 + k) - 0.3) * 60;
           if (this.theme.scenery === 'clouds') {
             const near = this.pathIndex.count ? this.pathIndex.nearest(x, z, 60) : { d: Infinity };
-            if (near.d < 40) continue;
-            y = 10 + hash2(ix, iz, 53 + k) * 80;
+            if (near.d < 45) continue;
+            y = 4 + hash2(ix, iz, 53 + k) * 30;
           }
           emit(0, x, y, z, s, s * 0.55, 1);
         }
@@ -814,16 +820,19 @@ export class Environment {
   buildTerrain(kind, q) {
     const f = T.fbmFactory(256, kind === 'alpine' ? 1234 : 4321, 6);
     const ridge = T.fbmFactory(256, 999, 4);
-    const size = 900, seg = Math.round(90 * Math.min(1.2, Math.sqrt(q)));
+    const size = 600, seg = Math.round(58 * Math.min(1.2, Math.sqrt(q)));
     const chunkN = 2; // radius in chunks
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, flatShading: false });
     this.disposables.push(mat);
     const trackY = this.trackY;
+    const hCache = new Map();
     const heightAt = (x, z) => {
       let h = Math.pow(f(x * 0.0022, z * 0.0022), 1.5) * 420 + ridge(x * 0.006, z * 0.006) * 60 - 60;
       if (kind === 'desert') { const v = f(x * 0.003, z * 0.003); h = (v > 0.55 ? 120 + (v - 0.55) * 200 : v * 80) - 10; h = Math.round(h / 30) * 30 * 0.6 + h * 0.4; }
-      if (this.pathIndex.count) {
-        const n = this.pathIndex.nearest(x, z, 180);
+      if (this.pathIndex.count && h > this.pathIndex.minY - 23) {
+        const qk = Math.round(x / 10) * 100003 + Math.round(z / 10);
+        let n = hCache.get(qk);
+        if (!n) { n = this.pathIndex.nearest(Math.round(x / 10) * 10, Math.round(z / 10) * 10, 180); hCache.set(qk, n); }
         if (n.d < 180) {
           const t = Math.max(0, (n.d - 25) / 155);
           const maxH = (n.y - 22) + t * t * 500;
@@ -870,17 +879,34 @@ export class Environment {
       this.root.add(m);
       return m;
     };
-    let lastKey = null;
+    const stale = new Set();
+    this.onDirty.push((box) => {
+      hCache.clear();
+      if (!box) return;
+      for (const k of chunks.keys()) {
+        const [a, b] = k.split(',').map(Number);
+        const x0 = a * size - size / 2 - 200, x1 = a * size + size / 2 + 200, z0 = b * size - size / 2 - 200, z1 = b * size + size / 2 + 200;
+        if (box.x1 >= x0 && box.x0 <= x1 && box.z1 >= z0 && box.z0 <= z1) stale.add(k);
+      }
+    });
     this.layers.push({
-      update: (cam, t, force) => {
+      update: (cam, t, force, immediate) => {
         const cx = Math.round(cam.x / size), cz = Math.round(cam.z / size);
-        const key = cx + ',' + cz;
-        if (key === lastKey && !force && !this.dirty) return;
-        lastKey = key;
         const want = new Set();
         for (let a = -chunkN; a <= chunkN; a++) for (let b = -chunkN; b <= chunkN; b++) want.add((cx + a) + ',' + (cz + b));
-        for (const [k, m] of chunks) if (!want.has(k) || force || this.dirty) { this.root.remove(m); m.geometry.dispose(); chunks.delete(k); }
-        for (const k of want) if (!chunks.has(k)) { const [a, b] = k.split(',').map(Number); chunks.set(k, makeChunk(a, b)); }
+        for (const [k, m] of chunks) if (!want.has(k)) { this.root.remove(m); m.geometry.dispose(); chunks.delete(k); stale.delete(k); }
+        let budget = immediate ? Infinity : 1;
+        // nearest missing chunks first
+        const todo = [...want].filter((k) => !chunks.has(k) || stale.has(k));
+        todo.sort((k1, k2) => { const [a1, b1] = k1.split(',').map(Number), [a2, b2] = k2.split(',').map(Number); return Math.hypot(a1 - cx, b1 - cz) - Math.hypot(a2 - cx, b2 - cz); });
+        for (const k of todo) {
+          if (budget-- <= 0) break;
+          const [a, b] = k.split(',').map(Number);
+          const old = chunks.get(k);
+          chunks.set(k, makeChunk(a, b));
+          if (old) { this.root.remove(old); old.geometry.dispose(); }
+          stale.delete(k);
+        }
       },
       dispose: () => { for (const m of chunks.values()) { this.root.remove(m); m.geometry.dispose(); } chunks.clear(); },
     });
@@ -1072,12 +1098,24 @@ export class Environment {
   addPathSample(x, y, z) { this.pathIndex.add(x, y, z); }
   markDirty() { this.dirty = true; }
 
-  update(cam, dt) {
+  // immediate: process everything now (course build); otherwise scenery refreshes are time-sliced
+  update(cam, dt, immediate = false) {
     this.time += dt;
     this.follow.position.set(cam.x, 0, cam.z);
     this.skyMat.uniforms.time.value = this.time;
-    for (const l of this.layers) l.update(cam, this.time, false);
-    this.dirty = false;
+    if (this.dirty) {
+      this.dirty = false;
+      const box = this.pathIndex.takeBox();
+      for (const f of this.onDirty) f(box);
+      for (const l of this.layers) if (l.grid) l.stale = true;
+    }
+    let gridBudget = immediate ? Infinity : 1;
+    for (const l of this.layers) {
+      if (l.grid && l.stale) {
+        if (gridBudget-- > 0) l.update(cam, this.time, true);
+        else l.update(cam, this.time, false);
+      } else l.update(cam, this.time, false, immediate);
+    }
   }
 
   dispose() {

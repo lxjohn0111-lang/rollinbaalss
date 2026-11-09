@@ -271,6 +271,7 @@ export class SectionBuilder {
     this.extraMeshes = [];
     this.triggers = [];
     this.audioTag = null;
+    this.disposables = [];
   }
 
   // local (x right, y up, d forward) -> three local vector
@@ -662,7 +663,7 @@ export class Course {
     const worldPts = B.pathPts.map((p) => p.clone().applyMatrix4(B.group.matrixWorld));
     for (const p of worldPts) {
       this.path.push(p, index);
-      if (!this.lastEnvSample || this.lastEnvSample.distanceTo(p) > 2) { this.env.addPathSample(p.x, p.y, p.z); this.lastEnvSample = p.clone(); }
+      if (!this.lastEnvSample || this.lastEnvSample.distanceTo(p) > 4) { this.env.addPathSample(p.x, p.y, p.z); this.lastEnvSample = p.clone(); }
     }
     sec.s1 = this.path.length;
     if (index === 0) sec.s0 = 0;
@@ -692,6 +693,7 @@ export class Course {
     for (const j of sec.B.joints) { try { this.physics.world.removeImpulseJoint(j, true); } catch (e) { /* ignore */ } }
     for (const d of sec.dyns) this.physics.removeBody(d.body);
     if (sec.B.onDispose) sec.B.onDispose();
+    for (const d of sec.B.disposables) d.dispose();
     if (sec.B.extraBodies) for (const b of sec.B.extraBodies) this.physics.removeBody(b);
     for (const mv of sec.movers) this.physics.removeBody(mv.body);
     this.physics.removeBody(sec.body);

@@ -88,11 +88,11 @@ for (const id of which) {
       }
       const gems = c.gems.length, coins = c.coins.total, length = c.finishS;
       const sim = g.simulate(600);
-      res({ build, overlaps, worst, gems, coins, length, ...sim, time: g.run.time, coinsGot: g.run.coins, blocks: g.run.blocks, result: g.lastResult ? { score: g.lastResult.score, stars: g.lastResult.stars } : null });
+      res({ build, overlaps, worst, gems, totalCoins: coins, length, ...sim, time: g.run.time, coinsGot: g.run.coins, blocks: g.run.blocks, result: g.lastResult ? { score: g.lastResult.score, stars: g.lastResult.stars } : null });
     }, 60));
   }, id - 1);
   const l = levels[id - 1];
-  console.log(`        L${String(id).padStart(2)} ${l.name.padEnd(22)} len=${r.length.toFixed(0)}m build=${r.build.toFixed(0)}ms gems=${r.gems} coins=${r.coinsGot}/${r.coins} falls=${r.falls} time=${r.time.toFixed(1)}s ${r.finished ? 'FINISHED' : 'stuck at ' + r.s.toFixed(0) + 'm'} ${r.result ? 'score=' + r.result.score + ' stars=' + r.result.stars : ''}`);
+  console.log(`        L${String(id).padStart(2)} ${l.name.padEnd(22)} len=${r.length.toFixed(0)}m build=${r.build.toFixed(0)}ms gems=${r.gems} coins=${r.coinsGot}/${r.totalCoins} falls=${r.falls} time=${r.time.toFixed(1)}s ${r.finished ? 'FINISHED' : 'stuck at ' + r.s.toFixed(0) + 'm'} ${r.result ? 'score=' + r.result.score + ' stars=' + r.result.stars : ''}`);
   ok(r.overlaps === 0, `L${id} course does not intersect itself${r.worst ? ' (' + JSON.stringify(r.worst) + ')' : ''}`);
   ok(r.gems === 2, `L${id} has 2 gems`);
   ok(r.finished, `L${id} completed by autopilot (falls: ${r.falls})`);

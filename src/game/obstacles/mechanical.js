@@ -25,6 +25,7 @@ export const MECHANICAL = [
         const map = B.m.belt.map.clone(); map.needsUpdate = true;
         if (kind === 'left' || kind === 'right') { map.center.set(0.5, 0.5); map.rotation = Math.PI / 2; }
         const mat = B.m.belt.clone(); mat.map = map; mat.userData.uvMeters = 2;
+        B.disposables.push(mat, map);
         B.box(0, -0.2, d + L / 2, w, 0.4, L - 0.1, mat, { surface: { type: 'conveyor', dir: world }, friction: 0.9 });
         for (const s of [-1, 1]) B.cyl(s * 0, -0.2, d + (s > 0 ? L - 0.15 : 0.15), 0.22, w + 0.2, 'x', B.m.steel, { collide: false });
         B.box(-w / 2 - 0.15, -0.1, d + L / 2, 0.3, 0.6, L, B.m.machine, { collide: false });
