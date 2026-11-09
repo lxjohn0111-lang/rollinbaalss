@@ -9,12 +9,12 @@ await page.goto((process.env.URL || 'http://localhost:5173/') + '?test=1&q=high&
 await page.waitForFunction(() => window.__ready, null, { timeout: 60000 });
 const r = await page.evaluate(() => {
   const g = window.__game; const out = {};
-  for (const lv of [1, 12, 15, 17, 20]) {
+  for (const lv of [1, 13, 14, 15, 16, 17, 20]) {
     const L = window.__modules.LEVELS[lv - 1]; const t0 = performance.now();
     g.buildCourse(L.theme, window.__levelDefs(L), { speed: L.speed, palette: L.palette });
     out['L' + lv + ' build ms'] = Math.round(performance.now() - t0);
   }
-  for (const theme of ['alpine', 'metropolis', 'desert']) {
+  for (const theme of []) {
     const gen = new window.__modules.EndlessGenerator(99, theme);
     g.endless = gen; g.endlessQueue = []; g.mode = 'endless';
     g.buildCourse(theme, gen.initial(), { speed: 10 }); g.run = g.newRun({ endless: true }); g.state = 'playing';

@@ -511,7 +511,7 @@ export class SectionBuilder {
     const q = this.quat.clone();
     if (o.ry) q.multiply(new THREE.Quaternion().setFromAxisAngle(UP, o.ry));
     const body = this.phys.dynamicBody(wp, q, { linearDamping: 0.05, angularDamping: 0.15, dominance: o.dominance ?? -1, sleeping: true });
-    const desc = R.ColliderDesc.cuboid(w / 2, h / 2, l / 2).setDensity(o.density ?? 0.35).setFriction(0.6).setRestitution(0.1);
+    const desc = (o.shape === 'pin' ? R.ColliderDesc.cylinder(h / 2, w / 2) : R.ColliderDesc.cuboid(w / 2, h / 2, l / 2)).setDensity(o.density ?? 0.35).setFriction(0.6).setRestitution(0.1);
     this.phys.addCollider(desc, body, { type: 'block', section: this.index });
     const rec = { body, w, h, l, p0: wp.clone(), q0: q.clone(), color: o.color, set: o.set, toppled: false };
     this.dyns.push(rec);
@@ -520,8 +520,15 @@ export class SectionBuilder {
 
   // Group of blocks rendered as one instanced mesh. Returns set (tracks toppled ratio).
   blockSet(list, mat, o = {}) {
-    const geo = new THREE.BoxGeometry(1, 1, 1);
-    boxUV(geo, 1);
+    let geo;
+    if (o.shape === 'pin') {
+      // classic turned bowling pin profile, normalised to a 1 x 1 x 1 bounding box
+      const prof = [[0, -0.5], [0.3, -0.5], [0.42, -0.36], [0.5, -0.18], [0.46, 0.0], [0.3, 0.12], [0.22, 0.2], [0.24, 0.3], [0.3, 0.38], [0.24, 0.47], [0, 0.5]];
+      geo = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 20);
+    } else {
+      geo = new THREE.BoxGeometry(1, 1, 1);
+      boxUV(geo, 1);
+    }
     const im = new THREE.InstancedMesh(geo, mat || this.m.block, list.length);
     im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false;
     im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
@@ -529,7 +536,7 @@ export class SectionBuilder {
     const set = { mesh: im, blocks: [], bonus: o.bonus ?? 25, done: false, name: o.name || 'STRUCTURE', section: this.index };
     const cols = this.m.blockColors;
     list.forEach((b, i) => {
-      const r = this.dynBox(b.x, b.y, b.d, b.w, b.h, b.l, { set, density: b.density, ry: b.ry });
+      const r = this.dynBox(b.x, b.y, b.d, b.w, b.h, b.l, { set, density: b.density, ry: b.ry, shape: o.shape });
       r.color = b.color || cols[(b.ci ?? i) % cols.length];
       im.setColorAt(i, r.color);
       set.blocks.push(r);

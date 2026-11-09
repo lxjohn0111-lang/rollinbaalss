@@ -12,7 +12,7 @@ page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 const shot = async (n) => { await page.screenshot({ path: `${out}/${n}.png`, timeout: 120000 }); console.log('shot', n); };
 const click = async (sel, text) => { const loc = text ? page.locator(sel, { hasText: text }).first() : page.locator(sel).first(); await loc.click({ timeout: 30000 }); await page.waitForTimeout(400); };
-await page.goto(`http://localhost:5173/?q=${q}`);
+await page.goto(`${process.env.URL || 'http://localhost:5173/'}?q=${q}`);
 await page.waitForFunction(() => window.__ready, null, { timeout: 120000 });
 await page.waitForTimeout(1500);
 await shot('01-menu');

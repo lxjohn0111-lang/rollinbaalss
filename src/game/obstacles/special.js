@@ -156,9 +156,13 @@ export const SPECIAL = [
       const pins = [];
       let ci = 0;
       for (let r = 0; r < 4; r++) for (let k = 0; k <= r; k++) {
-        pins.push({ x: (k - r / 2) * 0.62, y: 0.55, d: pd + r * 0.54, w: 0.3, h: 1.1, l: 0.3, color: new THREE.Color(ci++ % 2 ? '#ffffff' : '#f2f0ea'), density: 0.3 });
+        pins.push({ x: (k - r / 2) * 0.62, y: 0.56, d: pd + r * 0.54, w: 0.36, h: 1.1, l: 0.36, color: new THREE.Color(ci++ % 2 ? '#ffffff' : '#f2f0ea'), density: 0.3 });
       }
-      const set = B.blockSet(pins, B.m.white, { name: 'STRIKE', bonus: p.bonus || 30 });
+      const pinMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.1 });
+      B.disposables.push(pinMat);
+      const set = B.blockSet(pins, pinMat, { name: 'STRIKE', bonus: p.bonus || 30, shape: 'pin' });
+      // red neck stripes
+      set.blocks.forEach((b, i) => { b.color = new THREE.Color(i % 2 ? '#ffffff' : '#fff8ef'); set.mesh.setColorAt(i, b.color); });
       set.need = 1.0;
       for (const s of [-1, 1]) B.box(s * 1.2, 1.2, pd + 0.8, 0.2, 2.4, 0.2, B.m.dark, { collide: false });
       B.box(0, 2.3, pd + 0.8, 2.6, 0.5, 0.3, B.m.glow, { collide: false });
