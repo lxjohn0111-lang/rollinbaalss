@@ -1,0 +1,21 @@
+// Quick screenshot helper: node tests/shot.mjs "<query>" out.png [waitMs] [w] [h]
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { chromium } = require('playwright');
+const [,, query = '', out = 'shot.png', wait = '4000', w = '1280', h = '720'] = process.argv;
+const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: +w, height: +h } });
+const logs = [];
+page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
+page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack}`));
+await page.goto(`http://localhost:5173/${query}`);
+await page.waitForTimeout(+wait);
+const t0 = Date.now();
+const info0 = await page.evaluate(() => { const g = window.__game; return g && g.course ? { s: g.ball.s, state: g.state, fps: g.fps } : null; });
+console.log('pre', JSON.stringify(info0));
+await page.screenshot({ path: out, timeout: 120000 });
+console.log('shot ms', Date.now() - t0);
+const info = await page.evaluate(() => { const g = window.__game; if (!g || !g.course) return null; return { state: g.state, s: g.ball.s, y: g.ball.curPos.y, pathY: g.ball.pathY, fps: g.fps, sections: g.course.sections.length, len: g.course.path.length, calls: g.engine.renderer.info.render.calls, tris: g.engine.renderer.info.render.triangles, falls: g.run && g.run.falls, coins: g.run && g.run.coins }; }).catch((e) => String(e));
+console.log(JSON.stringify(info));
+console.log([...new Set(logs)].slice(0, 30).join('\n'));
+await browser.close();

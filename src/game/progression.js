@@ -1,0 +1,21 @@
+// Achievements. Each test receives the save data and the run that just ended.
+export const ACHIEVEMENTS = [
+  { id: 'first_roll', name: 'First Roll', desc: 'Complete Level 1.', reward: 50, test: (d) => d.levels[0]?.done },
+  { id: 'five_levels', name: 'Getting Rolling', desc: 'Complete 5 levels.', reward: 150, test: (d) => Object.values(d.levels).filter((l) => l.done).length >= 5 },
+  { id: 'ten_levels', name: 'Halfway Hero', desc: 'Complete 10 levels.', reward: 300, test: (d) => Object.values(d.levels).filter((l) => l.done).length >= 10 },
+  { id: 'all_levels', name: 'Final Roll', desc: 'Complete all 20 levels. Unlocks Disco Fever.', reward: 1000, test: (d) => Object.values(d.levels).filter((l) => l.done).length >= 20 },
+  { id: 'flawless', name: 'Flawless', desc: 'Finish a level without falling.', reward: 100, test: (d, r) => r.finished && r.falls === 0 && !r.endless },
+  { id: 'three_stars', name: 'Star Collector', desc: 'Earn 3 stars on any level.', reward: 100, test: (d) => Object.values(d.levels).some((l) => l.stars >= 3) },
+  { id: 'stars_30', name: 'Constellation', desc: 'Earn 30 stars in total.', reward: 400, test: (d) => Object.values(d.levels).reduce((a, l) => a + l.stars, 0) >= 30 },
+  { id: 'gem_first', name: 'Shiny!', desc: 'Find your first hidden gem.', reward: 50, test: (d) => Object.values(d.levels).some((l) => l.gems && l.gems.length) },
+  { id: 'gems_all', name: 'Gem Hoarder', desc: 'Find every gem in all levels. Unlocks Crystal Orb.', reward: 1500, test: (d) => Object.values(d.levels).reduce((a, l) => a + (l.gems ? l.gems.length : 0), 0) >= 40 },
+  { id: 'coins_1000', name: 'Pocket Change', desc: 'Collect 1,000 coins in total.', reward: 100, test: (d) => d.stats.coinsCollected >= 1000 },
+  { id: 'coins_5000', name: 'Coin Magnet', desc: 'Collect 5,000 coins in total.', reward: 500, test: (d) => d.stats.coinsCollected >= 5000 },
+  { id: 'blocks_100', name: 'Demolition Crew', desc: 'Knock over 100 blocks.', reward: 150, test: (d) => d.stats.blocks >= 100 },
+  { id: 'blocks_1000', name: 'Wrecking Ball', desc: 'Knock over 1,000 blocks.', reward: 500, test: (d) => d.stats.blocks >= 1000 },
+  { id: 'endless_500', name: 'Marathon', desc: 'Roll 500 m in a single Endless run.', reward: 150, test: (d) => d.endless.bestDistance >= 500 },
+  { id: 'endless_2000', name: 'Ultra Marathon', desc: 'Roll 2,000 m in a single Endless run.', reward: 600, test: (d) => d.endless.bestDistance >= 2000 },
+  { id: 'endless_score', name: 'High Roller', desc: 'Score 5,000 points in Endless mode.', reward: 400, test: (d) => d.endless.bestScore >= 5000 },
+  { id: 'shopper', name: 'New Look', desc: 'Buy a new ball.', reward: 50, test: (d) => d.owned.length >= 2 },
+  { id: 'collector', name: 'Collector', desc: 'Own 8 different balls.', reward: 500, test: (d) => d.owned.length >= 8 },
+];

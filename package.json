@@ -1,0 +1,22 @@
+{
+  "name": "skyroll",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SkyRoll - a 3D ball-rolling obstacle course game built with Three.js and Rapier",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "test": "node tests/run-tests.mjs"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.19.3",
+    "@fontsource/lilita-one": "^5.2.8",
+    "@fontsource/nunito": "^5.2.7",
+    "three": "0.182.0"
+  },
+  "devDependencies": {
+    "vite": "7.1.12"
+  }
+}
