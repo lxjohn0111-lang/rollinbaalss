@@ -54,7 +54,8 @@ export class Game {
     const s = this.save.data.settings;
     this.engine.setQuality(this.params.q || s.quality);
     setAnisotropy(this.engine.preset.aniso);
-    this.input.touchMode = s.touchMode;
+    this.input.touchMode = s.touchMode === 'drag' ? 'stick' : s.touchMode;
+    this.input.autoAccel = s.autoAccel == null ? this.input.isTouch : !!s.autoAccel;
     if (this.audio) { this.audio.setVolumes(s.music, s.sfx); }
     if (this.ball.skinId) this.ball.setSkin(this.save.data.skin, s.quality);
   }
@@ -85,10 +86,14 @@ export class Game {
     this.course = course;
     this.ball.setSkin(opts.skin || this.save.data.skin, this.save.data.settings.quality);
     this.ball.baseSpeed = course.baseSpeed;
+    this.ball.topSpeed = opts.top || Math.round(course.baseSpeed * 1.32 * 10) / 10;
+    this.ball.speedMul = 1;
+    this.ball.boostMeter = 35;
     const start = course.sections[0].B;
     const p = start.W(0, 0.55, 2);
     course.spawn = { pos: p, s: 2, section: 0 };
     course.path.sampleAt(2, this.sample);
+    this.ball.respawnSpeed = opts.startSpeed ?? 3;
     this.ball.attach(course, p, this.sample.t);
     this.bot.reset();
     this.cam.reset(p, this.sample.t);
@@ -102,15 +107,16 @@ export class Game {
     const lvl = LEVELS[pick];
     this.mode = 'demo';
     this.useBot = true;
-    this.buildCourse(lvl.theme, buildLevelDefs(lvl), { speed: lvl.speed, palette: lvl.palette });
+    this.buildCourse(lvl.theme, buildLevelDefs(lvl), { speed: lvl.speed, top: lvl.top, palette: lvl.palette });
     this.run = this.newRun({ demo: true, level: pick });
+    this.goTime = this.time;
     this.state = 'playing';
     this.cam.mode = 'cinematic';
     this.audio && this.audio.playMusic(THEMES[lvl.theme].music);
   }
 
   newRun(extra = {}) {
-    return { coins: 0, picked: 0, gems: [], falls: 0, time: 0, blocks: 0, sets: 0, bonus: 0, checkpoint: null, distance: 0, score: 0, finished: false, ...extra };
+    return { coins: 0, picked: 0, gems: [], falls: 0, time: 0, blocks: 0, sets: 0, bonus: 0, checkpoint: null, distance: 0, score: 0, points: 0, combo: 1, comboT: 0, bestCombo: 1, tricks: 0, perfect: 0, nearMiss: 0, coinStreak: 0, lastCoinT: -9, zones: 0, finished: false, ...extra };
   }
 
   startLevel(index) {
@@ -123,12 +129,13 @@ export class Game {
       this.levelIndex = index;
       this.useBot = !!this.params.bot;
       const defs = buildLevelDefs(lvl);
-      this.buildCourse(lvl.theme, defs, { speed: lvl.speed, palette: lvl.palette });
+      this.buildCourse(lvl.theme, defs, { speed: lvl.speed, top: lvl.top, palette: lvl.palette, startSpeed: this.useBot ? 3 : 0 });
       this.run = this.newRun({ level: index, totalCoins: this.course.coins.total, totalGems: this.course.gems.length });
-      this.state = 'playing';
       this.ui.hideLoading();
       this.ui.showHUD({ mode: 'level', title: `LEVEL ${index + 1}`, name: lvl.name, difficulty: lvl.difficulty, checkpoints: this.course.checkpoints.map((c) => c.s / this.course.finishS) });
       this.ui.toast(lvl.name, lvl.tagline || THEMES[lvl.theme].name, 2.6);
+      this.tutorial = index === 0 ? { stage: 0 } : null;
+      this.beginIntro();
       this.audio && this.audio.playMusic(THEMES[lvl.theme].music);
       this.save.data.stats.plays++;
     }, 30);
@@ -140,14 +147,15 @@ export class Game {
       this.mode = 'endless';
       this.useBot = !!this.params.bot;
       const seed = this.params.seed ? Number(this.params.seed) : (Math.random() * 1e9) | 0;
-      this.endless = new EndlessGenerator(seed);
+      this.endless = new EndlessGenerator(seed); this.zoneSpeed = 1;
       this.endlessQueue = [];
       const first = this.endless.initial();
-      this.buildCourse(this.endless.theme, first, { speed: 10 });
+      this.buildCourse(this.endless.theme, first, { speed: 10, startSpeed: this.useBot ? 3 : 0 });
       this.run = this.newRun({ endless: true, seed });
-      this.state = 'playing';
       this.ui.hideLoading();
       this.ui.showHUD({ mode: 'endless', title: 'ENDLESS', name: THEMES[this.endless.theme].name });
+      this.tutorial = null;
+      this.beginIntro();
       this.audio && this.audio.playMusic(THEMES[this.endless.theme].music);
       this.save.data.stats.plays++;
     }, 30);
@@ -160,8 +168,41 @@ export class Game {
     this.useBot = !!this.params.bot;
     this.buildCourse(theme, defs, { speed: Number(this.params.speed) || 10 });
     this.run = this.newRun({ sandbox: true, totalCoins: this.course.coins.total, totalGems: this.course.gems.length });
-    this.state = 'playing';
+    this.state = 'playing'; this.goTime = this.time;
     this.ui.showHUD({ mode: 'level', title: 'TEST', name: types.join(' + '), checkpoints: [] });
+  }
+
+  // Short READY / GO opening with a camera fly-in; sections may key machinery off goTime.
+  beginIntro() {
+    if (this.headless || this.useBot) { this.state = 'playing'; this.goTime = this.time; return; }
+    this.state = 'intro';
+    this.introT = 0;
+    this.goTime = Infinity;
+    this.cam.startIntro(this.ball.curPos, this.ball.fwd);
+    this.ui.countdown('READY');
+    this.sfx('ready');
+  }
+
+  // Skill reward: points are multiplied by the running combo, which grows with each trick.
+  trick(label, points, { color = 'gold', boost = 10, quiet = false } = {}) {
+    if (!this.run || this.mode === 'demo') return;
+    const r = this.run;
+    const gained = Math.round(points * r.combo);
+    r.points += gained; r.tricks++;
+    r.combo = Math.min(8, r.combo + 1); r.comboT = 4.5; r.bestCombo = Math.max(r.bestCombo, r.combo);
+    this.ball.boostMeter = Math.min(100, this.ball.boostMeter + boost);
+    if (!quiet) this.ui.popup(`${label} +${gained}`, color);
+    this.ui.combo(r.combo);
+    this.sfx('trick', Math.min(1, r.combo / 8));
+  }
+
+  breakCombo() { if (this.run && this.run.combo > 1) { this.run.combo = 1; this.ui.combo(1); } }
+
+  hint(key, text) {
+    if (this.mode !== 'level' || !this.tutorial) return;
+    if (this.tutorial[key]) return;
+    this.tutorial[key] = true;
+    this.ui.hint(text);
   }
 
   toMenu() {
@@ -198,7 +239,7 @@ export class Game {
     this.state = 'dying';
     this.dieT = 0;
     this.dieReason = reason;
-    if (this.mode !== 'demo') { this.run.falls++; this.save.data.stats.falls++; }
+    if (this.mode !== 'demo') { this.run.falls++; this.save.data.stats.falls++; this.breakCombo(); }
     this.cam.mode = reason === 'fall' ? 'fall' : 'follow';
     this.sfx('fail');
     if (reason !== 'fall') { this.effects.impact(this.ball.curPos, '#ff6040'); this.cam.shake(0.8); }
@@ -211,7 +252,9 @@ export class Game {
     if (this.mode === 'endless') { this.endRun(); return; }
     const spawn = cp ? { pos: cp.pos.clone().add(new THREE.Vector3(0, 0.55, 0)), s: cp.s, section: cp.section } : c.spawn;
     c.path.sampleAt(spawn.s, this.sample);
+    this.ball.respawnSpeed = 2;
     this.ball.respawn(spawn.pos, this.sample.t);
+    this.ball.boostMeter = Math.max(this.ball.boostMeter, 25);
     c.resetFrom(spawn.section, this.time);
     this.cam.reset(spawn.pos, this.sample.t);
     if (this.mode === 'demo') this.cam.mode = 'cinematic';
@@ -225,12 +268,12 @@ export class Game {
     this.state = 'over';
     const r = this.run;
     const dist = Math.floor(r.distance);
-    const score = Math.floor(dist * 2 + r.coins * 10 + r.bonus);
+    const score = Math.floor(dist * 2 + r.coins * 10 + r.bonus + r.points);
     r.score = score;
     const rec = this.save.recordEndless(dist, score, r.coins);
     this.save.addCoins(r.coins);
     this.ui.hideHUD();
-    this.ui.showGameOver({ distance: dist, score, coins: r.coins, bestDistance: this.save.data.endless.bestDistance, bestScore: this.save.data.endless.bestScore, newRecord: rec });
+    this.ui.showGameOver({ distance: dist, score, coins: r.coins, combo: r.bestCombo, tricks: r.tricks, zones: r.zones, bestDistance: this.save.data.endless.bestDistance, bestScore: this.save.data.endless.bestScore, newRecord: rec });
     this.checkAchievements();
   }
 
@@ -249,10 +292,10 @@ export class Game {
     const par = lvl && lvl.par ? lvl.par : Math.round(this.course.finishS / this.course.baseSpeed * 1.25 + 10);
     const timeBonus = Math.max(0, Math.round((par - r.time) * 15));
     const noFall = r.falls === 0 ? 500 : 0;
-    const score = r.coins * 10 + r.gems.length * 250 + timeBonus + noFall + r.bonus;
+    const score = r.coins * 10 + r.gems.length * 250 + timeBonus + noFall + r.bonus + r.points;
     let stars = 1; if (coinPct >= 0.6) stars = 2; if (coinPct >= 0.85 && r.falls <= 1) stars = 3;
     r.score = score; r.stars = stars;
-    const result = { level: this.levelIndex, score, coins: r.coins, picked: r.picked, totalCoins: r.totalCoins, gems: r.gems, totalGems: r.totalGems, time: r.time, falls: r.falls, stars, timeBonus, noFall, bonus: r.bonus, completionBonus: 50 + this.levelIndex * 10 };
+    const result = { level: this.levelIndex, score, coins: r.coins, picked: r.picked, totalCoins: r.totalCoins, gems: r.gems, totalGems: r.totalGems, time: r.time, falls: r.falls, stars, timeBonus, noFall, bonus: r.bonus, points: r.points, bestCombo: r.bestCombo, tricks: r.tricks, completionBonus: 50 + this.levelIndex * 10 };
     if (this.levelIndex >= 0) {
       result.prev = this.save.levelRecord(this.levelIndex);
       result.newBest = this.save.recordLevel(this.levelIndex, result);
@@ -271,7 +314,7 @@ export class Game {
     if (!this.run || this.mode === 'demo') return;
     this.run.bonus += coins * 10;
     this.run.coins += coins;
-    this.ui.popup(`${label} +${coins}`, 'gold');
+    this.trick(label, coins * 10, { boost: 20 });
     this.sfx('bonus');
   }
 
@@ -298,7 +341,18 @@ export class Game {
     if (this.headless) return;
     if (!this.course) { this.engine.render(); return; }
     if (!this.paused && this.state !== 'boot') this.update(dt * this.timeScale);
+    if (this.state === 'intro') this.updateIntro(dt);
     this.renderFrame(dt);
+  }
+
+  updateIntro(dt) {
+    this.introT += dt;
+    if (this.introT > 1.15 && !this.goShown) { this.goShown = true; this.ui.countdown('GO!'); this.sfx('go'); }
+    if (this.introT > 1.35) {
+      this.state = 'playing'; this.goShown = false; this.goTime = this.time;
+      this.cam.mode = 'follow';
+      if (this.tutorial) this.hint('roll', this.input.isTouch ? 'PUSH THE STICK UP TO ROLL' : 'HOLD  W  OR  ↑  TO ROLL');
+    }
   }
 
   update(dt) {
@@ -321,6 +375,7 @@ export class Game {
     const c = this.course, ball = this.ball;
     const sec = c.sectionAtS(ball.s);
     ball.preStep();
+    if (this.state === 'intro') { ball.body.setLinvel({ x: 0, y: Math.min(0, ball.body.linvel().y), z: 0 }, true); ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true); }
     if (this.state === 'playing' || this.state === 'finishing' || this.state === 'dying') ball.control(dt, inp, sec);
     c.stepUpdate(this.time, dt, ball.s);
     c.physics.step();
@@ -367,7 +422,15 @@ export class Game {
       if (!sec.removed && sec.s1 < ball.s - 140) c.removeSection(sec);
     }
     this.run.distance = Math.max(this.run.distance, ball.s);
-    this.ball.speedMul = this.endless.speedMulAt(ball.s);
+    // zone gates: announce the next family, reward the one just survived
+    const sec = c.sectionAtS(ball.s);
+    if (sec && sec.def && sec.def.zone && !sec.zoneSeen && ball.s > sec.s0 + 1) {
+      sec.zoneSeen = true; const z = sec.def.zone;
+      this.trick('ZONE CLEARED', 150 + 50 * (this.run.zones || 0), { color: 'green', boost: 25 });
+      this.run.zones = (this.run.zones || 0) + 1; this.run.zoneName = z.name; this.zoneSpeed = z.speed || 1;
+      this.ui.toast(z.name, z.sub, 2.6); this.sfx('ready');
+    }
+    this.ball.speedMul = this.endless.speedMulAt(ball.s) * (this.zoneSpeed || 1);
   }
 
   handleBallEvent(e) {
@@ -376,9 +439,22 @@ export class Game {
       const k = Math.min(1, e.impact / 14);
       this.effects.landDust(ball.curPos, e.impact);
       this.cam.shake(0.15 + k * 0.5);
+      this.cam.landKick(k);
       this.sfx('land', k);
-      if (e.air > 0.9 && this.state === 'playing' && this.mode !== 'demo') this.ui.popup(e.air > 1.5 ? 'HUGE AIR!' : 'NICE LANDING', 'blue');
-    } else if (e.type === 'jump') { this.sfx('jump'); }
+      if (e.air > 0.55 && this.state === 'playing' && this.mode !== 'demo') {
+        const latV = Math.abs(ball.vel.dot(ball.right));
+        const clean = latV < 2.6 && Math.abs(ball.lat) < 2.2 && e.impact < 19;
+        if (clean) {
+          const big = e.air > 1.3;
+          this.trick(big ? 'PERFECT BIG AIR' : 'PERFECT LANDING', big ? 250 : 120, { color: 'blue', boost: 18 });
+          this.run.perfect++;
+          this.effects.shockwave(ball.curPos, big ? '#7fd0ff' : '#ffffff', big ? 4 : 2.6);
+          this.sfx('perfect');
+        } else this.ui.popup('LANDED', 'blue');
+      }
+    } else if (e.type === 'jump') { this.sfx('jump'); this.effects.shockwave(ball.curPos.clone().setY(ball.curPos.y - 0.45), '#ffffff', 1.4); }
+    else if (e.type === 'boost') { this.sfx('boost'); this.cam.shake(0.2); }
+    else if (e.type === 'boostpad') { this.sfx('boost'); this.cam.shake(0.25); }
     else if (e.type === 'spring') { this.sfx('spring'); this.cam.shake(0.3); }
     else if (e.type === 'bump') { this.sfx('bump'); this.cam.shake(0.45); this.effects.impact(ball.curPos, '#ff3b6b'); }
     else if (e.type === 'hazard') { if (e.info.kill) this.killBall(e.info.kill); }
@@ -389,7 +465,14 @@ export class Game {
     if (this.mode === 'endless' && this.state === 'playing') this.streamEndless();
     // coins & gems
     c.coins.update(this.time, dt, ball.curPos, (id, x, y, z) => {
-      if (this.mode !== 'demo') { this.run.coins++; this.run.picked++; this.save.data.stats.coinsCollected++; }
+      if (this.mode !== 'demo') {
+        const r = this.run;
+        r.coins++; r.picked++; this.save.data.stats.coinsCollected++;
+        r.coinStreak = this.time - r.lastCoinT < 1.1 ? r.coinStreak + 1 : 1; r.lastCoinT = this.time;
+        r.points += 5 * r.combo;
+        ball.boostMeter = Math.min(100, ball.boostMeter + 2.5);
+        if (r.coinStreak > 0 && r.coinStreak % 10 === 0) this.trick('COIN STREAK', 100, { boost: 12 });
+      }
       this.effects.coinBurst(this.tmp.set(x, y, z));
       this.sfx('coin');
     });
@@ -397,7 +480,7 @@ export class Game {
       if (g.taken || !g.mesh.parent) continue;
       if (g.pos.distanceToSquared(ball.curPos) < 1.3) {
         g.taken = true; c.root.remove(g.mesh); this.effects.gemBurst(g.pos);
-        if (this.mode !== 'demo') { this.run.gems.push(g.id); this.ui.popup('GEM FOUND!', 'purple'); this.sfx('gem'); }
+        if (this.mode !== 'demo') { this.run.gems.push(g.id); this.trick('GEM FOUND', 250, { color: 'purple', boost: 25 }); this.sfx('gem'); }
       }
     }
     // block structures
@@ -428,22 +511,67 @@ export class Game {
     // dying sequence
     if (this.state === 'dying') {
       this.dieT += dt;
-      if (this.dieT > (this.dieReason === 'fall' ? 1.0 : 0.7)) this.respawn();
+      if (this.dieT > (this.dieReason === 'fall' ? 0.75 : 0.55)) this.respawn();
     } else if (this.state === 'finishing') {
       this.finishT += dt;
       if (this.finishT > 2.4 && this.mode !== 'demo') { this.state = 'results'; this.ui.hideHUD(); this.ui.showResults(this.lastResult); }
       if (this.finishT > 4 && this.mode === 'demo') this.startDemo();
     }
-    // speed streaks
-    if (ball.boostT > 0 || ball.speed > 15) this.effects.speedStreaks(ball.curPos, ball.fwd);
+    if (this.state === 'playing' && this.mode !== 'demo') this.skillUpdate(dt);
+    // speed streaks & boost trail
+    if (ball.boosting || ball.speed > ball.topSpeed * 1.15) this.effects.speedStreaks(ball.curPos, ball.fwd);
+    if (ball.boosting) this.effects.boostTrail(ball.curPos, ball.fwd);
     this.effects.update(dt);
     // HUD
     if (this.mode !== 'demo' && this.run && this.ui.hudVisible) {
+      const r = this.run;
       const prog = this.mode === 'endless' ? 0 : Math.min(1, ball.s / c.finishS);
-      this.ui.updateHUD({ progress: prog, coins: this.run.coins, distance: Math.floor(this.run.distance), jump: ball.jumpAllowed, time: this.run.time, score: this.mode === 'endless' ? Math.floor(this.run.distance * 2 + this.run.coins * 10 + this.run.bonus) : null, fps: this.fps });
+      const score = this.mode === 'endless' ? Math.floor(r.distance * 2 + r.coins * 10 + r.bonus + r.points) : Math.floor(r.coins * 10 + r.bonus + r.points + r.gems.length * 250);
+      this.ui.updateHUD({ progress: prog, coins: r.coins, distance: Math.floor(r.distance), time: r.time, score, combo: r.combo, comboT: r.comboT / 4.5, speed: ball.speed, top: ball.topSpeed, boost: ball.boostMeter, boosting: ball.boosting, advise: this.advise, fps: this.fps });
     }
-    if (this.audio) this.audio.updateRolling(ball.grounded && this.state !== 'dying' && this.mode !== 'demo' ? ball.speed : 0, ball.groundType);
+    if (this.audio) {
+      this.audio.updateRolling(ball.grounded && this.state !== 'dying' && this.mode !== 'demo' ? ball.speed : 0, ball.groundType);
+      this.audio.updateBoost(ball.boosting && this.mode !== 'demo' && this.state === 'playing');
+      this.audio.setIntensity(this.mode === 'demo' ? 0.2 : this.intensity || 0);
+    }
     if (this.mode !== 'demo' && this.state === 'playing') this.save.data.stats.distance += ball.speed * dt;
+  }
+
+  // Combo decay, near-miss detection, speed rush, boost regen, speed advisory, music intensity, tutorial.
+  skillUpdate(dt) {
+    const r = this.run, ball = this.ball, c = this.course;
+    if (r.comboT > 0) { r.comboT -= dt; if (r.comboT <= 0) this.breakCombo(); }
+    if (!ball.boosting) ball.boostMeter = Math.min(100, ball.boostMeter + 2.2 * dt);
+    const sec = c.sectionAtS(ball.s);
+    // near miss: a moving hazard passing within a hair of the ball
+    this.nearCd = (this.nearCd || 0) - dt;
+    let danger = 9;
+    if (sec.B.danger) {
+      const l = sec.B.toLocal(ball.curPos);
+      danger = sec.B.danger(l.x, l.d, this.time);
+      if (danger > -0.05 && danger < 0.3 && this.nearCd <= 0 && sec.movers.length) { this.trick('CLOSE CALL', 80, { color: 'red', boost: 10 }); r.nearMiss++; this.nearCd = 1.6; }
+    }
+    // speed rush: hold a blistering pace
+    if (ball.speed > ball.topSpeed * 1.12 && ball.grounded) { this.rushT = (this.rushT || 0) + dt; if (this.rushT > 2.2) { this.trick('SPEED RUSH', 100, { boost: 0 }); this.rushT = -2; } }
+    else if ((this.rushT || 0) > 0) this.rushT = 0;
+    else this.rushT = Math.min(0, (this.rushT || 0) + dt);
+    // advisory: warn when approaching a section that wants less speed
+    this.advise = null;
+    const ahead = c.sectionAtS(ball.s + Math.max(12, ball.speed * 1.6));
+    if (ahead && ahead !== sec && ahead.speedMul && ahead.speedMul < 0.95) {
+      const want = ball.baseSpeed * ahead.speedMul * ball.speedMul;
+      if (ball.speed > want + 2.5) this.advise = 'brake';
+    }
+    // music intensity follows the action
+    const busy = sec.movers.length || sec.B.danger || sec.B.ground ? 0.65 : 0.35;
+    const target = Math.min(1, busy + (ball.boosting ? 0.25 : 0) + (r.combo - 1) * 0.04);
+    this.intensity = (this.intensity || 0) + (target - (this.intensity || 0)) * Math.min(1, dt * 1.5);
+    // tutorial hints (level 1)
+    if (this.tutorial) {
+      if (this.input.anyThrottle) this.ui.hintDone('roll');
+      if (ball.boostMeter >= 60 && !this.tutorial.boost && r.time > 6) this.hint('boost', this.input.isTouch ? 'HOLD  BOOST  FOR SPEED' : 'HOLD  SHIFT  TO BOOST');
+      if (this.advise === 'brake') this.hint('brake', this.input.isTouch ? 'PULL THE STICK DOWN TO BRAKE' : 'PRESS  S  OR  ↓  TO BRAKE');
+    }
   }
 
   renderFrame(dt) {
@@ -457,6 +585,7 @@ export class Game {
     c.path.sampleAt(s + 7, this.sample, ball.pathIdx);
     this.pathDir.add(this.sample.t).normalize();
     const sec = c.sectionAtS(s + 2);
+    if (sec.cam && sec.cam.fixed) this.pathDir.copy(sec.B.dirW(0, 1));
     this.cam.update(dt, ball, this.pathDir, sec.cam, c.physics, { shake: this.save.data.settings.shake });
     this.engine.updateSun(ball.mesh.position);
     c.env.update(this.engine.camera.position, dt);

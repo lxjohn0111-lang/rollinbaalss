@@ -15,7 +15,7 @@ function defaults() {
     endless: { bestDistance: 0, bestScore: 0, runs: 0, totalDistance: 0 },
     achievements: {},
     stats: { plays: 0, falls: 0, coinsCollected: 0, blocks: 0, distance: 0, levelsCompleted: 0, playTime: 0 },
-    settings: { quality: 'high', music: 0.6, sfx: 0.8, touchMode: 'buttons', shake: true, showFps: false },
+    settings: { quality: 'high', music: 0.6, sfx: 0.8, touchMode: 'stick', autoAccel: null, shake: true, showFps: false },
   };
 }
 

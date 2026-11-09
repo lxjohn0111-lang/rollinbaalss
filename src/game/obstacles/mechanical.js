@@ -120,6 +120,7 @@ export const MECHANICAL = [
         return !tt.cracked && !tt.fallen;
       };
       B.width = 4.6;
+      B.noWait = true;
       B.exit(0, 0, end + 4);
     },
   },
@@ -249,6 +250,7 @@ export const MECHANICAL = [
       };
       B.width = 4.4;
       B.speedMul = 0.85;
+      B.noWait = true;
       B.exit(0, 0, end + 4);
     },
   },

@@ -12,9 +12,9 @@ export function boostPad(B, x, d0, d1, w, power = 1.8, time = 1.6) {
 function edgeStripes(B, d, w) { B.box(0, 0.006, d, w, 0.012, 0.5, B.m.hazard, { collide: false, cast: false }); }
 
 // Smooth ramp ribbon from d0 to d1 rising from y0 to y1 with a concave (kicker) profile.
-function ramp(B, d0, d1, y0, y1, w, mat, exp = 2) {
+function ramp(B, d0, d1, y0, y1, w, mat, exp = 2, path = true) {
   const fn = (u) => ({ x: 0, y: y0 + (y1 - y0) * Math.pow(u, exp), d: d0 + (d1 - d0) * u, h: 0, w });
-  B.ribbon(fn, 24, w, 0.5, mat || B.m.deckAlt, { path: true, supports: true, supportStep: 6 });
+  B.ribbon(fn, 24, w, 0.5, mat || B.m.deckAlt, { path, supports: true, supportStep: 6 });
   return fn;
 }
 
@@ -145,7 +145,7 @@ export const JUMPS = [
       const side = p.side || 1, off = 2.6 * side, gap = 4.2;
       pad(B, 0, 7, W, { edges: true });
       boostPad(B, 0, 1, 6, 3.4, 1.5, 1.4);
-      ramp(B, 7, 12, 0, 1.3, W, B.m.deckAlt, 1.6);
+      ramp(B, 7, 12, 0, 1.3, W, B.m.deckAlt, 1.6, false);
       const ld = 12 + gap;
       B.deck(off, ld, ld + 16, 3.6, { edges: true });
       arrows(B, off, ld + 3, 2.2, 3, B.m.arrowGreen);
@@ -182,17 +182,17 @@ export const JUMPS = [
     id: 'ski_jump', name: 'Ski Jump', category: 'Jumps', difficulty: 3,
     desc: 'Plunge down a steep in-run, launch off the lip and land on the hill below.',
     build(B, p) {
-      const inDrop = p.inDrop || 5, inLen = 18, gap = p.gap || 12, landDrop = p.landDrop || 6, landLen = 26;
+      const inDrop = p.inDrop || 5, inLen = 18, gap = p.gap || 9, landDrop = p.landDrop || 5, landLen = 26;
       pad(B, 0, 3, W);
       const fin = (u) => ({ x: 0, y: -inDrop * (u < 0.85 ? smooth(u / 0.85) : 1) + (u > 0.85 ? Math.pow((u - 0.85) / 0.15, 2) * 0.7 : 0), d: 3 + inLen * u, h: 0, w: 4.2 });
       B.ribbon(fin, 50, 4.2, 0.5, B.m.deckAlt, { path: true, supports: true, supportStep: 6, walls: { h: 0.5, t: 0.25, mat: B.m.rail } });
       const lipY = fin(1).y, lipD = 3 + inLen;
       const l0 = lipD + gap;
-      const lfn = (u) => ({ x: 0, y: lipY - 1.5 - landDrop * smooth(Math.min(1, u * 1.2)), d: l0 + landLen * u, h: 0, w: 7 });
+      const lfn = (u) => ({ x: 0, y: lipY - 3 - landDrop * smooth(Math.min(1, u * 1.2)), d: l0 + landLen * u, h: 0, w: 7 });
       B.ribbon(lfn, 40, 7, 0.5, B.m.deck, { supports: true, supportStep: 8 });
       const endY = lfn(1).y;
       B.deck(0, l0 + landLen, l0 + landLen + 6, 7, { y: endY });
-      B.pathLine(0, lipD, 0, l0, lipY, lipY - 1.5);
+      B.pathLine(0, lipD, 0, l0, lipY, lipY - 3);
       B.pathFn(lfn, 30);
       B.pathLine(0, l0 + landLen, 0, l0 + landLen + 6, endY, endY);
       for (let i = 0; i < 7; i++) { const k = i / 6; B.coin(0, lipY + 1.3 + Math.sin(k * Math.PI) * 1.8 - k * 2, lipD + 0.5 + k * gap * 1.3); }

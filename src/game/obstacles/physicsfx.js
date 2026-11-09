@@ -31,6 +31,14 @@ export const PHYSICS = [
       B.pathLine(0, 0, 0, e0 + 10);
       if (p.gem) B.gem(pads[2].x, 3.0, (pads[2].dc + pads[3].dc) / 2 - 0.6);
       B.speedMul = v / (B.course.baseSpeed || 10);
+      // the bounce field calibrates your forward speed so every hop carries you to the next pad
+      B.onUpdate(() => {
+        const b = B.ballLocal(); const ball = B.ball;
+        if (!b || !ball.body || b.d < 4 || b.d > e0 || ball.grounded) return;
+        const f = B.dirW(0, 1); const vf = ball.vel.x * f.x + ball.vel.z * f.z;
+        const a = THREE.MathUtils.clamp((v - vf) * 4, -10, 10);
+        ball.addAccel(f.x * a, 0, f.z * a);
+      });
       B.hint = (c) => { const i = pads.findIndex((q) => q.dc + 0.6 > c.local.d); const q = i < 0 ? { x: 0 } : pads[i]; return { lat: q.x }; };
       B.cam = { dist: 7.4, height: 4.0 };
       B.exit(0, 0, e0 + 10);
@@ -142,11 +150,11 @@ export const PHYSICS = [
       B.ribbon(up, 40, w, 0.5, B.m.deckAlt, { path: true, supports: true, supportStep: 6, walls: { h: 0.5, t: 0.2, mat: B.m.rail } });
       for (let i = 0; i < 3; i++) { const c = up(0.25 + i * 0.22); arrows(B, 0, c.d, 2.4, 2, B.m.arrowGold, c.y + 0.04).rotation.x = -Math.PI / 2 - Math.atan(rise * 1.5 / len); }
       B.deck(0, 6 + len, 12 + len, W, { y: rise });
+      B.pathLine(0, 6 + len, 0, 12 + len, rise, rise);
       const down = (u) => ({ x: 0, y: rise - (rise + (p.down || 2)) * smooth(u), d: 12 + len + 12 * u, h: 0, w });
       B.ribbon(down, 30, w, 0.5, B.m.deck, { path: true, supports: true, supportStep: 6 });
       const endY = -(p.down || 2);
       pad(B, 24 + len, 28 + len, W, { y: endY });
-      B.pathLine(0, 6 + len, 0, 12 + len, rise, rise);
       for (let i = 1; i < 8; i++) { const c = up(i / 8); B.coin(0, c.y + 0.7, c.d); }
       B.coinLine(0, 7 + len, 0, 11 + len, 3, rise + 0.65);
       B.hint = () => ({ lat: 0, accel: true });

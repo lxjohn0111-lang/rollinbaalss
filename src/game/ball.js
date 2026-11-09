@@ -8,8 +8,9 @@ export const BALL_R = 0.5;
 const UP = new THREE.Vector3(0, 1, 0);
 
 export const TUNING = {
-  latSpeed: 6.6, kF: 2.6, accMax: 16, brakeMax: 11, kL: 11, latAcc: 34,
-  kAir: 3.4, latAccAir: 10, jumpV: 8.6, coyote: 0.13, jumpBuffer: 0.16, maxSpeed: 42,
+  latSpeed: 6.8, kF: 2.6, accMax: 10, brakeMax: 15, reverseMax: 4.5, coast: 0.7, overDrag: 0.3, kL: 11, latAcc: 34,
+  kAir: 3.6, latAccAir: 11, airAcc: 3.5, airBrake: 5, jumpV: 8.6, coyote: 0.13, jumpBuffer: 0.16, maxSpeed: 42,
+  boostMul: 1.6, boostAcc: 22, boostDrain: 30,
 };
 
 export class Ball {
@@ -37,7 +38,8 @@ export class Ball {
     this.grounded = false; this.airTime = 0; this.coyote = 0; this.jumpBuf = 0;
     this.groundInfo = null; this.groundType = null;
     this.boostT = 0; this.boostMul = 1; this.slowT = 0;
-    this.baseSpeed = 10; this.speedMul = 1;
+    this.baseSpeed = 10; this.speedMul = 1; this.topSpeed = 13;
+    this.boostMeter = 30; this.boosting = false; this.wasBoosting = false; this.throttle = 0;
     this.lastVy = 0; this.events = [];
     this.bumpCd = 0; this.springCd = 0; this.jumpLock = 0;
     this.gravityScale = 1;
@@ -77,7 +79,7 @@ export class Ball {
 
   respawn(pos, fwd) {
     this.body.setTranslation({ x: pos.x, y: pos.y, z: pos.z }, true);
-    const v = fwd ? fwd.clone().multiplyScalar(this.baseSpeed * 0.45) : new THREE.Vector3();
+    const v = fwd ? fwd.clone().multiplyScalar(this.respawnSpeed ?? 3) : new THREE.Vector3();
     this.body.setLinvel({ x: v.x, y: 0, z: v.z }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setGravityScale(1, true);
@@ -150,11 +152,11 @@ export class Ball {
     if (grounded && gInfo && gInfo.onTouch) gInfo.onTouch(this);
 
     // --- surface behaviour
-    let kF = TUNING.kF, kL = TUNING.kL, latAcc = TUNING.latAcc, speedSurf = 1;
+    const kF = TUNING.kF; let kL = TUNING.kL, latAcc = TUNING.latAcc, speedSurf = 1;
     const type = grounded ? this.groundType : null;
-    if (type === 'ice') { kF = 0.4; kL = 1.9; latAcc = 8; }
-    else if (type === 'sticky') { speedSurf = 0.38; kF = 6; this.vel.multiplyScalar(1 - 3.2 * dt); body.setLinvel({ x: this.vel.x, y: this.vel.y, z: this.vel.z }, true); }
-    else if (type === 'boost') { this.boost(gInfo.power || 1.75, gInfo.time || 1.3); }
+    if (type === 'ice') { kL = 1.9; latAcc = 8; }
+    else if (type === 'sticky') { speedSurf = 0.38; this.vel.multiplyScalar(1 - 3.2 * dt); body.setLinvel({ x: this.vel.x, y: this.vel.y, z: this.vel.z }, true); }
+    else if (type === 'boost') { if (this.boostT <= 0) this.events.push({ type: 'boostpad' }); this.boost(gInfo.power || 1.75, gInfo.time || 1.3); }
     else if (type === 'conveyor') {
       const dir = gInfo.dir; // world vector * speed (m/s)
       const df = dir.x * this.fwd.x + dir.z * this.fwd.z;
@@ -180,9 +182,9 @@ export class Ball {
     }
     this.springCd -= dt; this.bumpCd -= dt;
 
-    // --- jumping
+    // --- jumping (available everywhere; sections may disable it)
     if (input.jump) this.jumpBuf = TUNING.jumpBuffer; else this.jumpBuf -= dt;
-    this.jumpAllowed = !!(sec && sec.jump);
+    this.jumpAllowed = !(sec && sec.noJump);
     if (this.jumpBuf > 0 && this.coyote > 0 && this.jumpAllowed) {
       const vy = Math.max(this.vel.y, 0) * 0.3 + TUNING.jumpV * (this.gravityScale < 1 ? 0.8 : 1);
       body.setLinvel({ x: this.vel.x, y: vy, z: this.vel.z }, true);
@@ -191,23 +193,48 @@ export class Ball {
       this.events.push({ type: 'jump' });
     }
 
-    // --- drive & steering (path-relative)
+    // --- throttle, brake, boost & steering (path-relative)
     if (this.boostT > 0) { this.boostT -= dt; if (this.boostT <= 0) this.boostMul = 1; }
-    const secMul = sec ? sec.speedMul || 1 : 1;
-    let target = this.baseSpeed * this.speedMul * secMul * speedSurf * (this.boostT > 0 ? this.boostMul : 1);
-    if (input.brake) target *= 0.62; else if (input.accel) target *= 1.18;
+    const top = this.topSpeed * this.speedMul;
+    const thr = THREE.MathUtils.clamp(input.throttle ?? (input.accel ? 1 : input.brake ? -1 : 0), -1, 1);
+    // player boost burns the meter; boost pads grant free boost
+    if (thr < -0.3 && this.boostT > 0) { this.boostT = 0; this.boostMul = 1; } // braking always wins over a boost-pad burst
+    const wantBoost = !!input.boost && this.boostMeter > 2 && thr > -0.3;
+    this.boosting = wantBoost || this.boostT > 0;
+    if (wantBoost) { this.boostMeter = Math.max(0, this.boostMeter - TUNING.boostDrain * dt); if (!this.wasBoosting) this.events.push({ type: 'boost' }); }
+    this.wasBoosting = wantBoost;
     const f = this.fwd, r = this.right;
     const vf = this.vel.dot(f);
     const vLat = this.vel.dot(r) - this.groundVel.dot(r);
-    const steerTarget = input.steer * TUNING.latSpeed;
-    let aF, aL;
-    if (this.grounded || this.coyote > 0.05) {
-      aF = THREE.MathUtils.clamp((target - vf) * kF, -TUNING.brakeMax, TUNING.accMax);
+    const steerTarget = input.steer * TUNING.latSpeed * (this.boosting ? 0.85 : 1);
+    let aF = 0, aL;
+    const onGround = this.grounded || this.coyote > 0.05;
+    if (onGround) {
+      const cap = top * speedSurf;
+      if (this.boosting) {
+        const padT = this.boostT > 0 ? this.baseSpeed * this.speedMul * this.boostMul : 0;
+        const bt = Math.max(padT, wantBoost ? top * TUNING.boostMul : 0) * speedSurf;
+        aF = THREE.MathUtils.clamp((bt - vf) * 3, 0, TUNING.boostAcc);
+      } else if (thr > 0.05) {
+        aF = vf < cap ? Math.min(TUNING.accMax * thr, (cap - vf) * kF * 1.2 + 0.5) : 0;
+      } else if (thr < -0.05) {
+        aF = vf > 0.4 ? -TUNING.brakeMax * -thr : THREE.MathUtils.clamp((-TUNING.reverseMax * -thr - vf) * 3, -6, 6);
+      } else {
+        aF = vf > 0 ? -TUNING.coast : vf < 0 ? TUNING.coast : 0;
+      }
+      if (!this.boosting && vf > cap * 1.3) aF -= (vf - cap * 1.3) * TUNING.overDrag; // keep downhill momentum, bleed only extreme overspeed
+      if (type === 'ice') aF *= 0.35;
       aL = THREE.MathUtils.clamp((steerTarget - vLat) * kL, -latAcc, latAcc);
     } else {
-      aF = THREE.MathUtils.clamp((target - vf) * 1.4, -2.5, 5);
+      // air control: nudge speed and line, never full authority
+      if (thr > 0.05 && vf < top * 1.05) aF = TUNING.airAcc * thr; else if (thr < -0.05) aF = -TUNING.airBrake * -thr;
+      if (this.boosting && vf < top * 1.4) aF += 4;
       aL = THREE.MathUtils.clamp((steerTarget * 0.9 - vLat) * TUNING.kAir, -TUNING.latAccAir, TUNING.latAccAir);
     }
+    if (type === 'sticky') aF = Math.min(aF, 2);
+    // free-roll zones (loops, launch tubes): pure physics, the player only rides it out
+    if (sec && sec.freeRoll && sec.freeRoll(this)) { aF = 0; aL = 0; }
+    this.throttle = thr;
     const m = this.mass * dt;
     const ix = (f.x * aF + r.x * aL + this.extAccel.x) * m;
     const iy = this.extAccel.y * m;

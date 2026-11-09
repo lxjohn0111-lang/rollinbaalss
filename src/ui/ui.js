@@ -255,10 +255,11 @@ export class UI {
     seg('Graphics quality', 'quality', [['low', 'LOW'], ['medium', 'MED'], ['high', 'HIGH'], ['ultra', 'ULTRA']]);
     slider('Music volume', 'music');
     slider('Sound effects', 'sfx');
-    seg('Touch steering', 'touchMode', [['buttons', 'BUTTONS'], ['drag', 'DRAG']]);
+    seg('Touch controls', 'touchMode', [['stick', 'STICK'], ['buttons', 'BUTTONS']]);
+    seg('Auto-accelerate', 'autoAccel', [[null, 'AUTO'], [true, 'ON'], [false, 'OFF']]);
     seg('Camera shake', 'shake', [[true, 'ON'], [false, 'OFF']]);
     seg('Show FPS', 'showFps', [[false, 'OFF'], [true, 'ON']]);
-    const keys = h('div', 'keys', `<b>Controls</b><span><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> steer</span><span><kbd>Space</kbd> jump (in jump zones)</span><span><kbd>W</kbd>/<kbd>S</kbd> speed up / brake</span><span><kbd>R</kbd> restart checkpoint</span><span><kbd>Esc</kbd> pause</span>`);
+    const keys = h('div', 'keys', `<b>Controls</b><span><kbd>W</kbd>/<kbd>↑</kbd> accelerate</span><span><kbd>S</kbd>/<kbd>↓</kbd> brake &amp; reverse</span><span><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> steer</span><span><kbd>Space</kbd> jump</span><span><kbd>Shift</kbd> boost</span><span><kbd>R</kbd> restart checkpoint</span><span><kbd>Esc</kbd> pause</span>`);
     p.appendChild(keys);
     if (!fromPause) {
       const reset = this.btn('RESET PROGRESS', 'danger small', () => this.confirm('Reset all progress?', 'This deletes coins, levels, balls, records and achievements. This cannot be undone.', () => { this.save.reset(); this.game.applySettings(); this.showMenu(); }));
@@ -325,33 +326,49 @@ export class UI {
           <div class="hl-bar"><div class="hl-fill"></div><div class="hl-ticks"></div><div class="hl-ball"></div></div>
           <div class="hl-name"></div>
         </div>
-        <div class="hud-dist hidden"><b>0</b><small>m</small><div class="hd-score">0</div></div>
-        <div class="hud-coins"><span class="ic">${ICON.coin}</span><b>0</b></div>
+        <div class="hud-dist hidden"><b>0</b><small>m</small></div>
+        <div class="hud-right">
+          <div class="hud-coins"><span class="ic">${ICON.coin}</span><b>0</b></div>
+          <div class="hud-score"><b>0</b><span class="combo"><i>x1</i><span class="combo-t"></span></span></div>
+        </div>
       </div>
-      <div class="hud-jump"><span class="ic">${ICON.jump}</span>JUMP ZONE<kbd>SPACE</kbd></div>
+      <div class="hud-speed">
+        <div class="hs-num"><b>0</b><small>KM/H</small></div>
+        <div class="hs-boost"><div class="hs-fill"></div><span>BOOST</span></div>
+        <div class="hs-advise">SLOW DOWN</div>
+      </div>
+      <div class="hud-count"></div>
+      <div class="hud-hint"></div>
       <div class="hud-fps hidden"></div>
       <div class="touch-ctrl">
+        <div class="stick"><div class="stick-knob"></div></div>
         <button class="hud-btn tc tc-left">${ICON.left}</button>
         <button class="hud-btn tc tc-right">${ICON.right}</button>
+        <button class="hud-btn tc tc-brake"><small>BRAKE</small></button>
+        <button class="hud-btn tc tc-boost"><small>BOOST</small></button>
         <button class="hud-btn tc tc-jump">${ICON.jump}<small>JUMP</small></button>
       </div>`;
     this.root.appendChild(hud);
     this.hud = hud;
+    const q = (c) => hud.querySelector(c);
     this.hudEls = {
-      title: hud.querySelector('.hl-title'), name: hud.querySelector('.hl-name'), fill: hud.querySelector('.hl-fill'), ball: hud.querySelector('.hl-ball'), ticks: hud.querySelector('.hl-ticks'),
-      coins: hud.querySelector('.hud-coins b'), level: hud.querySelector('.hud-level'), dist: hud.querySelector('.hud-dist'), distB: hud.querySelector('.hud-dist b'), score: hud.querySelector('.hd-score'),
-      jump: hud.querySelector('.hud-jump'), fps: hud.querySelector('.hud-fps'), touch: hud.querySelector('.touch-ctrl'), tjump: hud.querySelector('.tc-jump'),
+      title: q('.hl-title'), name: q('.hl-name'), fill: q('.hl-fill'), ball: q('.hl-ball'), ticks: q('.hl-ticks'),
+      coins: q('.hud-coins b'), level: q('.hud-level'), dist: q('.hud-dist'), distB: q('.hud-dist b'),
+      score: q('.hud-score b'), combo: q('.combo'), comboI: q('.combo i'), comboT: q('.combo-t'),
+      speed: q('.hs-num b'), boost: q('.hs-fill'), boostBox: q('.hs-boost'), advise: q('.hs-advise'),
+      count: q('.hud-count'), hint: q('.hud-hint'), fps: q('.hud-fps'), touch: q('.touch-ctrl'), stick: q('.stick'), knob: q('.stick-knob'),
     };
-    hud.querySelector('.pause-btn').addEventListener('click', (e) => { e.stopPropagation(); this.click(); this.game.togglePause(); });
-    const hold = (el, side) => {
-      const on = (e) => { e.preventDefault(); e.stopPropagation(); this.game.input.setButton(side, true); el.classList.add('down'); };
-      const off = (e) => { e.preventDefault(); this.game.input.setButton(side, false); el.classList.remove('down'); };
+    q('.pause-btn').addEventListener('click', (e) => { e.stopPropagation(); this.click(); this.game.togglePause(); });
+    const hold = (el, name) => {
+      const on = (e) => { e.preventDefault(); e.stopPropagation(); this.game.input.setButton(name, true); el.classList.add('down'); };
+      const off = (e) => { e.preventDefault(); this.game.input.setButton(name, false); el.classList.remove('down'); };
       el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointerleave', off); el.addEventListener('pointercancel', off);
     };
-    hold(hud.querySelector('.tc-left'), 'left'); hold(hud.querySelector('.tc-right'), 'right');
-    const j = hud.querySelector('.tc-jump');
+    hold(q('.tc-left'), 'left'); hold(q('.tc-right'), 'right'); hold(q('.tc-boost'), 'boost'); hold(q('.tc-brake'), 'brake');
+    const j = q('.tc-jump');
     j.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.game.input.pressJump(); j.classList.add('down'); });
     j.addEventListener('pointerup', () => j.classList.remove('down'));
+    j.addEventListener('pointerleave', () => j.classList.remove('down'));
   }
 
   showHUD(cfg) {
@@ -365,24 +382,60 @@ export class UI {
     e.title.textContent = cfg.title;
     e.name.textContent = cfg.name || '';
     e.ticks.innerHTML = (cfg.checkpoints || []).map((p, i) => `<span class="tick" data-i="${i}" style="left:${(p * 100).toFixed(1)}%">${ICON.flag}</span>`).join('');
-    this.lastCoins = -1;
+    this.lastCoins = -1; this.lastScore = -1; this.lastCombo = 0;
+    e.hint.classList.remove('show'); e.count.classList.remove('show');
     const touch = this.game.input.isTouch;
     this.hud.classList.toggle('is-touch', touch);
-    this.hud.classList.toggle('drag-mode', this.save.data.settings.touchMode === 'drag');
+    this.hud.classList.toggle('buttons-mode', this.game.input.touchMode === 'buttons');
     e.fps.classList.toggle('hidden', !this.save.data.settings.showFps);
+    this.combo(1);
   }
 
-  hideHUD() { this.hud.classList.add('hidden'); this.hudVisible = false; if (this.game) { this.game.input.setButton('left', false); this.game.input.setButton('right', false); } }
+  hideHUD() { this.hud.classList.add('hidden'); this.hudVisible = false; if (this.game) this.game.input.releaseAll(); }
 
   updateHUD(d) {
     const e = this.hudEls;
     if (d.progress != null) { const p = (d.progress * 100).toFixed(1) + '%'; e.fill.style.width = p; e.ball.style.left = p; }
     if (d.coins !== this.lastCoins) { e.coins.textContent = fmt(d.coins); if (this.lastCoins >= 0) { e.coins.parentElement.classList.remove('bump'); void e.coins.offsetWidth; e.coins.parentElement.classList.add('bump'); } this.lastCoins = d.coins; }
-    if (d.score != null) { e.distB.textContent = fmt(d.distance); e.score.textContent = fmt(d.score) + ' pts'; }
-    e.jump.classList.toggle('on', !!d.jump);
-    e.tjump.classList.toggle('on', !!d.jump);
+    if (d.score !== this.lastScore) { e.score.textContent = fmt(d.score); this.lastScore = d.score; }
+    e.distB.textContent = fmt(d.distance);
+    e.comboT.style.transform = `scaleX(${Math.max(0, Math.min(1, d.comboT || 0)).toFixed(3)})`;
+    e.speed.textContent = Math.round(d.speed * 3.6);
+    e.boost.style.transform = `scaleX(${(d.boost / 100).toFixed(3)})`;
+    e.boostBox.classList.toggle('full', d.boost >= 99);
+    e.boostBox.classList.toggle('on', !!d.boosting);
+    e.advise.classList.toggle('on', d.advise === 'brake');
+    this.hud.classList.toggle('fast', d.speed > d.top * 1.1);
     if (this.save.data.settings.showFps) e.fps.textContent = Math.round(d.fps) + ' FPS';
+    // stick visual
+    const st = this.game.input.stick;
+    if (st.active) { e.stick.classList.add('on'); e.stick.style.left = st.x0 + 'px'; e.stick.style.top = st.y0 + 'px'; e.knob.style.transform = `translate(${st.dx}px, ${st.dy}px)`; }
+    else e.stick.classList.remove('on');
   }
+
+  combo(n) {
+    const e = this.hudEls; if (!e) return;
+    e.comboI.textContent = 'x' + n;
+    e.combo.classList.toggle('on', n > 1);
+    if (n > this.lastCombo && n > 1) { e.combo.classList.remove('pop'); void e.combo.offsetWidth; e.combo.classList.add('pop'); }
+    e.combo.dataset.level = Math.min(4, Math.ceil(n / 2));
+    this.lastCombo = n;
+  }
+
+  countdown(text) {
+    const c = this.hudEls.count;
+    c.textContent = text; c.classList.remove('show'); void c.offsetWidth; c.classList.add('show');
+    c.classList.toggle('go', text === 'GO!');
+  }
+
+  hint(text, dur = 4.5) {
+    const el = this.hudEls.hint;
+    el.innerHTML = text.replace(/  (\S+)  /g, ' <kbd>$1</kbd> ');
+    el.classList.add('show');
+    clearTimeout(this.hintT); this.hintT = setTimeout(() => el.classList.remove('show'), dur * 1000);
+  }
+
+  hintDone() { setTimeout(() => this.hudEls.hint.classList.remove('show'), 600); }
 
   checkpointReached(i) { const t = this.hudEls.ticks.querySelector(`[data-i="${i}"]`); if (t) t.classList.add('on'); }
 
@@ -450,7 +503,7 @@ export class UI {
         <div class="rr"><span>Falls</span><b>${r.falls}</b></div>
         <div class="rr sub"><span>Time bonus</span><b>+${fmt(r.timeBonus)}</b></div>
         <div class="rr sub"><span>Flawless bonus</span><b>+${fmt(r.noFall)}</b></div>
-        <div class="rr sub"><span>Stunt & structure bonus</span><b>+${fmt(r.bonus)}</b></div>
+        <div class="rr sub"><span>Tricks (${r.tricks || 0}) · best combo x${r.bestCombo || 1}</span><b>+${fmt((r.points || 0) + r.bonus)}</b></div>
         <div class="rr total"><span>SCORE</span><b class="count" data-to="${r.score}">0</b></div>
         <div class="rr reward"><span>Coins earned</span><b>+${fmt(r.coins + r.completionBonus)} <span class="ic">${ICON.coin}</span></b></div>
       </div>
@@ -484,6 +537,8 @@ export class UI {
       <div class="res-rows">
         <div class="rr"><span>Score</span><b>${fmt(r.score)}</b></div>
         <div class="rr"><span><span class="ic">${ICON.coin}</span> Coins</span><b>${fmt(r.coins)}</b></div>
+        <div class="rr"><span>Tricks · best combo</span><b>${r.tricks || 0} · x${r.combo || 1}</b></div>
+        <div class="rr"><span>Zones cleared</span><b>${r.zones || 0}</b></div>
         <div class="rr sub"><span>Best distance</span><b>${fmt(r.bestDistance)} m</b></div>
         <div class="rr sub"><span>Best score</span><b>${fmt(r.bestScore)}</b></div>
       </div>

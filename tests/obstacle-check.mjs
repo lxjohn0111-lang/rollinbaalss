@@ -18,12 +18,16 @@ for (const id of list) {
     const g = window.__game;
     try {
       g.startSandbox([id]);
+      // path sanity: consecutive samples must keep moving forward (no doubling back)
+      const P = g.course.path; let back = 0;
+      for (let i = 2; i < P.count; i++) { const a = P.p[i - 2], b = P.p[i - 1], c = P.p[i]; const ux = b.x - a.x, uz = b.z - a.z, vx = c.x - b.x, vz = c.z - b.z; const la = Math.hypot(ux, uz), lb = Math.hypot(vx, vz); if (la > 0.05 && lb > 0.05 && (ux * vx + uz * vz) / (la * lb) < -0.5 && P.sec[i] === P.sec[i - 2]) back++; }
       const res = g.simulate(120);
+      res.pathBack = back;
       return { id, ...res, len: g.course.path.length, finishS: g.course.finishS };
     } catch (e) { return { id, error: String(e && e.stack || e) }; }
   }, id);
   rows.push(r);
-  console.log(r.error ? `ERR ${id}: ${r.error.split('\n').slice(0, 3).join(' | ')}` : `${r.finished ? 'OK ' : 'FAIL'} ${id.padEnd(18)} t=${r.simTime.toFixed(1)}s falls=${r.falls} coins=${r.coins} s=${r.s.toFixed(1)}/${r.finishS.toFixed(1)} state=${r.state}`);
+  console.log(r.error ? `ERR ${id}: ${r.error.split('\n').slice(0, 3).join(' | ')}` : `${r.finished ? 'OK ' : 'FAIL'} ${id.padEnd(18)} t=${r.simTime.toFixed(1)}s falls=${r.falls} coins=${r.coins} s=${r.s.toFixed(1)}/${r.finishS.toFixed(1)} state=${r.state}${r.pathBack ? ' PATH-DOUBLES-BACK x' + r.pathBack : ''}`);
 }
 if (errors.length) console.log('PAGE ERRORS:\n' + [...new Set(errors)].slice(0, 10).join('\n'));
 await browser.close();

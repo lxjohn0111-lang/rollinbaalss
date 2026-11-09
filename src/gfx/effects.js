@@ -77,6 +77,28 @@ export class Effects {
     this.gems = [];
     this.time = 0;
     this.tmp = new THREE.Vector3();
+    // pooled expanding rings for jumps, landings and impacts
+    this.rings = [];
+    const ringGeo = new THREE.RingGeometry(0.85, 1, 48);
+    ringGeo.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 8; i++) {
+      const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }));
+      m.visible = false; m.renderOrder = 4; scene.add(m);
+      this.rings.push({ m, t: 0, life: 0.5, r: 2 });
+    }
+    this.ringNext = 0;
+  }
+
+  shockwave(pos, color = '#ffffff', radius = 2.5) {
+    const r = this.rings[this.ringNext]; this.ringNext = (this.ringNext + 1) % this.rings.length;
+    r.m.position.copy(pos); r.m.position.y -= 0.42;
+    r.m.material.color.set(color); r.t = 0; r.life = 0.45 + radius * 0.05; r.r = radius; r.m.visible = true;
+  }
+
+  boostTrail(pos, fwd) {
+    for (let i = 0; i < 2; i++) {
+      this.spark.spawn({ pos: this.tmp.copy(pos).addScaledVector(fwd, -0.55).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5)), vel: fwd.clone().multiplyScalar(-4).add(new THREE.Vector3(0, 0.6, 0)), life: 0.35, size: 0.42, grow: -0.3, color: i ? '#4dd2ff' : '#ff9a3c', drag: 2 });
+    }
   }
 
   coinBurst(pos) {
@@ -146,9 +168,17 @@ export class Effects {
       g.position.y = g.userData.base + Math.sin(this.time * 2.4) * 0.12;
     }
     this.spark.update(dt); this.dust.update(dt); this.confetti.update(dt); this.streak.update(dt);
+    for (const r of this.rings) {
+      if (!r.m.visible) continue;
+      r.t += dt; const k = r.t / r.life;
+      if (k >= 1) { r.m.visible = false; continue; }
+      const sc = 0.3 + r.r * (1 - Math.pow(1 - k, 3)); r.m.scale.set(sc, sc, sc);
+      r.m.material.opacity = (1 - k) * 0.85;
+    }
   }
 
   clear() {
+    this.rings.forEach((r) => (r.m.visible = false));
     this.spark.clear(); this.dust.clear(); this.confetti.clear(); this.streak.clear();
     this.gems = [];
   }

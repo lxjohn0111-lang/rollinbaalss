@@ -132,6 +132,18 @@ export class AudioEngine {
       case 'deny': this.osc('square', 180, t, 0.12, 0.08); this.osc('square', 140, t + 0.12, 0.16, 0.08); break;
       case 'achievement': [0, 4, 7, 11, 14].forEach((n, i) => this.osc('triangle', mtof(76 + n), t + i * 0.07, 0.5, 0.12)); break;
       case 'whoosh': this.noiseHit(t, 0.35, 0.18, 'bandpass', 400, 1.2, null, 3000); break;
+      case 'trick': { const n = 72 + Math.round(k * 12); this.osc('triangle', mtof(n), t, 0.12, 0.12); this.osc('triangle', mtof(n + 7), t + 0.05, 0.16, 0.1); break; }
+      case 'perfect': [0, 7, 12, 19, 24].forEach((n, i) => this.osc('sine', mtof(79 + n), t + i * 0.035, 0.35, 0.12)); this.noiseHit(t, 0.4, 0.12, 'highpass', 5000, 0.6); this.osc('sine', 90, t, 0.35, 0.4, null, { freqEnd: 40 }); break;
+      case 'boost': this.noiseHit(t, 0.5, 0.3, 'bandpass', 300, 1.5, null, 4000); this.osc('sawtooth', 110, t, 0.45, 0.12, null, { freqEnd: 440 }); break;
+      case 'ready': this.osc('square', mtof(69), t, 0.18, 0.08); this.osc('sine', mtof(57), t, 0.4, 0.15); break;
+      case 'go': [0, 12].forEach((n) => this.osc('square', mtof(81 + n), t, 0.35, 0.08)); this.osc('sawtooth', 220, t, 0.5, 0.12, null, { freqEnd: 880 }); this.noiseHit(t, 0.3, 0.2, 'bandpass', 1200, 0.8, null, 6000); break;
+      case 'slam': this.osc('sine', 70, t, 0.4, 0.5 * k, null, { freqEnd: 30 }); this.noiseHit(t, 0.25, 0.4 * k, 'lowpass', 900, 1); break;
+      case 'hiss': this.noiseHit(t, 0.45, 0.18 * k, 'highpass', 3000, 0.7, null, 1200); break;
+      case 'clank': this.osc('square', 220 + Math.random() * 80, t, 0.06, 0.12 * k); this.noiseHit(t, 0.08, 0.25 * k, 'bandpass', 2600, 6); break;
+      case 'cannon': this.osc('sine', 60, t, 0.7, 0.8, null, { freqEnd: 25 }); this.noiseHit(t, 0.8, 0.6, 'lowpass', 1600, 0.7, null, 120); break;
+      case 'ring': [0, 4, 7].forEach((n, i) => this.osc('sine', mtof(88 + n), t + i * 0.03, 0.25, 0.1)); break;
+      case 'alarm': this.osc('square', 660, t, 0.15, 0.06); this.osc('square', 520, t + 0.17, 0.15, 0.06); break;
+      case 'rumble': this.noiseHit(t, 1.2, 0.35 * k, 'lowpass', 180, 1, null, 60); this.osc('sine', 38, t, 1.1, 0.3 * k); break;
       default: break;
     }
   }
@@ -163,6 +175,25 @@ export class AudioEngine {
     this.rumble.frequency.setTargetAtTime(30 + k * 40, t, 0.1);
     this.rumbleGain.gain.setTargetAtTime(k * 0.12, t, 0.08);
   }
+
+  updateBoost(on) {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    if (!this.boostSrc) {
+      const c = this.ctx;
+      this.boostSrc = c.createBufferSource(); this.boostSrc.buffer = this.noise; this.boostSrc.loop = true;
+      this.boostF = c.createBiquadFilter(); this.boostF.type = 'bandpass'; this.boostF.frequency.value = 900; this.boostF.Q.value = 1.4;
+      this.boostG = c.createGain(); this.boostG.gain.value = 0;
+      this.boostOsc = c.createOscillator(); this.boostOsc.type = 'sawtooth'; this.boostOsc.frequency.value = 85;
+      const og = c.createGain(); og.gain.value = 0.25;
+      this.boostSrc.connect(this.boostF); this.boostF.connect(this.boostG); this.boostOsc.connect(og); og.connect(this.boostG); this.boostG.connect(this.sfxGain);
+      this.boostSrc.start(); this.boostOsc.start();
+    }
+    const t = this.ctx.currentTime;
+    this.boostG.gain.setTargetAtTime(on && !this.ducked ? 0.16 : 0, t, on ? 0.04 : 0.12);
+    this.boostF.frequency.setTargetAtTime(on ? 1800 : 600, t, 0.2);
+  }
+
+  setIntensity(k) { this.intensity = k; }
 
   // ------------------------------------------------------------ music sequencer
   playMusic(cfg) {
@@ -207,7 +238,11 @@ export class AudioEngine {
     const kickPat = st === 'chill' || st === 'dream' ? [0, 10] : st === 'industrial' ? [0, 4, 8, 12, 14] : st === 'funk' ? [0, 3, 8, 10] : [0, 8, 11];
     if (kickPat.includes(s16) && !(intro && s16 !== 0)) { this.osc('sine', 150, t, 0.28, 0.55, dest, { freqEnd: 42 }); }
     if ((s16 === 4 || s16 === 12) && !intro) { this.noiseHit(t, st === 'chill' ? 0.12 : 0.18, 0.22, 'bandpass', 1800, 0.7, dest); this.osc('triangle', 190, t, 0.08, 0.12, dest); }
+    const I = this.intensity ?? 0.4;
     if (!intro && s16 % 2 === 0 && st !== 'dream') this.noiseHit(t, s16 % 4 === 2 ? 0.08 : 0.04, s16 % 4 === 2 ? 0.08 : 0.05, 'highpass', 7000, 0.5, dest);
+    if (!intro && I > 0.55 && s16 % 2 === 1) this.noiseHit(t, 0.03, 0.035 + (I - 0.55) * 0.08, 'highpass', 9000, 0.5, dest);
+    if (!intro && I > 0.75 && (s16 === 6 || s16 === 14)) this.osc('sine', 130, t, 0.18, 0.3, dest, { freqEnd: 50 });
+    if (!intro && I > 0.85 && s16 % 4 === 3) this.noiseHit(t, 0.06, 0.12, 'bandpass', 2400, 3, dest);
     if (st === 'dream' && s16 % 4 === 2) this.noiseHit(t, 0.3, 0.03, 'highpass', 9000, 0.3, dest);
     // bass
     const bassPat = st === 'funk' ? [0, 3, 6, 8, 10, 14] : st === 'synth' ? [0, 2, 4, 6, 8, 10, 12, 14] : st === 'industrial' ? [0, 2, 3, 8, 10, 11] : [0, 6, 8, 14];
@@ -239,8 +274,9 @@ export class AudioEngine {
         const deg = chord + arp[(s16 / 2 + bar) % arp.length | 0];
         const n = this.note(deg, 1);
         const type = st === 'folk' || st === 'western' ? 'triangle' : st === 'industrial' ? 'square' : 'triangle';
-        const g = this.osc(type, mtof(n), t, spb * 1.6, st === 'industrial' ? 0.04 : 0.07, dest);
+        const g = this.osc(type, mtof(n), t, spb * 1.6, (st === 'industrial' ? 0.04 : 0.07) * (0.7 + (this.intensity ?? 0.4) * 0.6), dest);
         g.connect(this.delay);
+        if ((this.intensity ?? 0) > 0.8) this.osc('square', mtof(n + 12), t, spb, 0.025, dest);
       }
     }
   }

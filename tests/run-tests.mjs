@@ -30,7 +30,7 @@ const reg = await page.evaluate(async () => {
   return Object.values(m.REGISTRY).map((o) => ({ id: o.id, kind: o.kind, name: o.name, category: o.category, desc: o.desc, difficulty: o.difficulty, jump: !!o.jump, build: typeof o.build }));
 });
 const obstacles = reg.filter((o) => o.kind === 'obstacle');
-ok(obstacles.length >= 50, `${obstacles.length} distinct obstacle types (>= 50 required)`);
+ok(obstacles.length >= 60, `${obstacles.length} distinct obstacle types (>= 60 required)`);
 ok(obstacles.every((o) => o.id && o.name && o.category && o.desc && o.difficulty > 0 && o.build === 'function'), 'every obstacle has id, name, category, description, difficulty and builder');
 const cats = {};
 for (const o of obstacles) cats[o.category] = (cats[o.category] || 0) + 1;
@@ -42,7 +42,10 @@ console.log('\n[2] Level design rules');
 const levels = await page.evaluate(async () => {
   const m = window.__modules;
   const r = window.__modules;
-  return m.LEVELS.map((l) => ({ id: l.id, name: l.name, theme: l.theme, difficulty: l.difficulty, seq: l.sections.map((s) => s[0]).filter((t) => r.REGISTRY[t].kind === 'obstacle'), cps: l.sections.filter((s) => s[0] === 'checkpoint').length }));
+  const big = ['mega_hoop', 'ski_jump', 'spiral_down', 'vortex_tunnel', 'low_gravity', 'disc_gate', 'paddle_wheel'];
+  return m.LEVELS.map((l) => ({ id: l.id, name: l.name, theme: l.theme, difficulty: l.difficulty, seq: l.sections.map((s) => s[0]).filter((t) => r.REGISTRY[t].kind === 'obstacle'), cps: l.sections.filter((s) => s[0] === 'checkpoint').length,
+    setPieces: l.sections.filter((s) => r.REGISTRY[s[0]].setPiece || big.includes(s[0])).length + (l.start === 'launch_bay' ? 1 : 0),
+    maxIdle: (() => { let run = 0, mx = 0; for (const [t] of l.sections) { if (r.REGISTRY[t].kind === 'obstacle') run = 0; else { run++; mx = Math.max(mx, run); } } return mx; })() }));
 });
 ok(levels.length >= 20, `${levels.length} handcrafted levels`);
 ok(new Set(levels.map((l) => l.name)).size === levels.length, 'level names are unique');
@@ -65,6 +68,9 @@ ok(introOk, 'each of levels 1-18 introduces at least one new mechanic');
 const unused = obstacles.filter((o) => !seen.has(o.id)).map((o) => o.id);
 ok(unused.length === 0, `every obstacle appears in the campaign${unused.length ? ' (unused: ' + unused.join(', ') + ')' : ''}`);
 ok(levels.every((l) => l.cps >= 1), 'every level has at least one checkpoint');
+ok(levels.every((l) => l.seq.length >= 12), `every level has 12+ obstacle encounters (min ${Math.min(...levels.map((l) => l.seq.length))}, max ${Math.max(...levels.map((l) => l.seq.length))})`);
+ok(levels.every((l) => l.setPieces >= 3), `every level has 3+ major set pieces (min ${Math.min(...levels.map((l) => l.setPieces))})`);
+ok(levels.every((l) => l.maxIdle <= 2), 'no level has more than two non-obstacle sections in a row');
 ok(levels.every((l, i) => i === 0 || l.difficulty >= levels[i - 1].difficulty - 1), 'difficulty ramps across the campaign');
 
 // ------------------------------------------------------------------ 3/4. build + playthrough
@@ -88,11 +94,12 @@ for (const id of which) {
       }
       const gems = c.gems.length, coins = c.coins.total, length = c.finishS;
       const sim = g.simulate(600);
-      res({ build, overlaps, worst, gems, totalCoins: coins, length, ...sim, time: g.run.time, coinsGot: g.run.coins, blocks: g.run.blocks, result: g.lastResult ? { score: g.lastResult.score, stars: g.lastResult.stars } : null });
+      res({ build, overlaps, worst, gems, totalCoins: coins, length, ...sim, time: g.run.time, coinsGot: g.run.picked, bonusCoins: g.run.coins - g.run.picked, tricks: g.run.tricks, bestCombo: g.run.bestCombo, blocks: g.run.blocks, result: g.lastResult ? { score: g.lastResult.score, stars: g.lastResult.stars } : null });
     }, 60));
   }, id - 1);
   const l = levels[id - 1];
-  console.log(`        L${String(id).padStart(2)} ${l.name.padEnd(22)} len=${r.length.toFixed(0)}m build=${r.build.toFixed(0)}ms gems=${r.gems} coins=${r.coinsGot}/${r.totalCoins} falls=${r.falls} time=${r.time.toFixed(1)}s ${r.finished ? 'FINISHED' : 'stuck at ' + r.s.toFixed(0) + 'm'} ${r.result ? 'score=' + r.result.score + ' stars=' + r.result.stars : ''}`);
+  r.rate = l.seq.length / Math.max(1, r.time) * 60;
+  console.log(`        L${String(id).padStart(2)} ${l.name.padEnd(22)} enc/min=${r.rate.toFixed(1)} len=${r.length.toFixed(0)}m build=${r.build.toFixed(0)}ms gems=${r.gems} coins=${r.coinsGot}/${r.totalCoins}+${r.bonusCoins}bonus tricks=${r.tricks} combo=x${r.bestCombo} falls=${r.falls} time=${r.time.toFixed(1)}s ${r.finished ? 'FINISHED' : 'stuck at ' + r.s.toFixed(0) + 'm'} ${r.result ? 'score=' + r.result.score + ' stars=' + r.result.stars : ''}`);
   ok(r.overlaps === 0, `L${id} course does not intersect itself${r.worst ? ' (' + JSON.stringify(r.worst) + ')' : ''}`);
   ok(r.gems === 2, `L${id} has 2 gems`);
   ok(r.finished, `L${id} completed by autopilot (falls: ${r.falls})`);
@@ -118,15 +125,18 @@ const gen = await page.evaluate(async (seeds) => {
       pairs.push(p);
       if (obs.slice(Math.max(0, i - 6), i).includes(obs[i])) window8++;
     }
-    out.push({ seed: s, theme: gnr.theme, count: obs.length, unique: new Set(obs).size, imm, pairRep, window8, maxHeading: gnr.heading });
+    const zh = gnr.zoneHistory; let zoneRep = 0;
+    for (let i = 1; i < zh.length; i++) if (zh.slice(Math.max(0, i - 3), i).includes(zh[i])) zoneRep++;
+    out.push({ seed: s, theme: gnr.theme, count: obs.length, unique: new Set(obs).size, imm, pairRep, window8, maxHeading: gnr.heading, zones: zh.length - 1, zoneKinds: new Set(zh).size - 1, zoneRep });
   }
   return out;
 }, seeds);
-for (const g of gen) console.log(`        seed ${g.seed}: theme=${g.theme} obstacles=${g.count} unique=${g.unique} immediateRepeats=${g.imm} repeatedPairs=${g.pairRep} repeatsWithin6=${g.window8}`);
+for (const g of gen) console.log(`        seed ${g.seed}: theme=${g.theme} obstacles=${g.count} unique=${g.unique} immediateRepeats=${g.imm} repeatedPairs=${g.pairRep} repeatsWithin6=${g.window8} zones=${g.zones} zoneKinds=${g.zoneKinds}`);
 ok(gen.every((g) => g.imm === 0), 'endless never repeats an obstacle immediately');
 ok(gen.every((g) => g.pairRep === 0), 'endless never repeats a recent obstacle combination');
 ok(gen.every((g) => g.window8 === 0), 'endless keeps at least 6 different obstacles between repeats');
 ok(gen.every((g) => g.unique >= 40), 'endless draws from a large pool (>= 40 unique per 80 obstacles)');
+ok(gen.every((g) => g.zones >= 8 && g.zoneKinds >= 5 && g.zoneRep === 0), 'endless rotates themed zones (8+ zones, 5+ kinds, no zone within 3 of itself)');
 for (let s = 1; s <= Math.min(seeds, Number(args.endlessRuns || 4)); s++) {
   const r = await page.evaluate((seed) => {
     const g = window.__game;
@@ -136,13 +146,14 @@ for (let s = 1; s <= Math.min(seeds, Number(args.endlessRuns || 4)); s++) {
       let sim;
       try { sim = g.simulate(900); } catch (e) { res({ error: String(e.stack || e) }); return; }
       const live = g.course ? g.course.sections.filter((x) => !x.removed).length : 0;
-      res({ ...sim, live, total: g.course ? g.course.sections.length : 0, over: g.state });
+      res({ ...sim, live, total: g.course ? g.course.sections.length : 0, over: g.state, zones: g.run.zones, tricks: g.run.tricks, combo: g.run.bestCombo });
     }, 60));
   }, s * 31337);
   if (r.error) { ok(false, `endless seed ${s} crashed: ${r.error}`); continue; }
-  console.log(`        endless run seed ${s}: distance=${r.dist.toFixed(0)}m state=${r.over} sections generated=${r.total} live=${r.live}`);
+  console.log(`        endless run seed ${s}: distance=${r.dist.toFixed(0)}m state=${r.over} sections generated=${r.total} live=${r.live} zones=${r.zones} tricks=${r.tricks} bestCombo=x${r.combo}`);
   ok(r.dist > 300, `endless run ${s} progressed > 300 m with autopilot`);
   ok(r.live < 30, `endless run ${s} streams sections (live ${r.live} of ${r.total})`);
+  ok(r.zones >= 2, `endless run ${s} passes zone gates (${r.zones})`);
 }
 
 // ------------------------------------------------------------------ 6. save persistence

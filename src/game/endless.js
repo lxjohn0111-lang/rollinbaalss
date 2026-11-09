@@ -83,7 +83,40 @@ export const POOL = {
   bowling: { min: 0, p: () => ({}) },
   laser_grid: { min: 0.55, p: (d) => ({ period: lerp(2.6, 2.2, d) }) },
   gold_rush: { min: 0, bonus: true, p: () => ({ gem: false, len: 30 }) },
+  // set pieces
+  assembling_bridge: { min: 0, p: (d, r) => ({ wave: 0.8 + r() }) },
+  domino_bridge: { min: 0.08, p: () => ({}) },
+  hydraulic_lift: { min: 0.1, p: () => ({ rise: 5.5 }), dy: 5.5 },
+  cannon: { min: 0.15, spectacle: true, p: () => ({ dist: 30, rise: 3 }), dy: 3 },
+  pinball_room: { min: 0.2, p: () => ({}) },
+  sky_route: { min: 0.2, p: (d, r) => ({ side: r() < 0.5 ? -1 : 1 }) },
+  claw_drop: { min: 0.25, p: (d) => ({ count: 2 + Math.round(d * 2) }) },
+  loop: { min: 0.25, spectacle: true, p: () => ({}) },
+  ring_flight: { min: 0.3, spectacle: true, p: () => ({}), dy: -1 },
+  rotating_world: { min: 0.3, p: (d, r) => ({ speed: lerp(0.4, 0.6, d), dir: r() < 0.5 ? -1 : 1 }) },
+  gear_train: { min: 0.3, p: (d) => ({ count: 3 + Math.round(d) }) },
+  wall_ride: { min: 0.3, p: () => ({}) },
+  boulder_run: { min: 0.3, p: () => ({}), dy: 4.5 },
+  chaser: { min: 0.3, spectacle: true, p: (d) => ({ speed: lerp(8.4, 9.6, d) }) },
+  magnetic_storm: { min: 0.35, p: (d) => ({ force: lerp(15, 19, d) }) },
+  updrafts: { min: 0.35, spectacle: true, p: () => ({}) },
+  hyper_tunnel: { min: 0.45, p: () => ({}), dy: -2.5 },
+  sweep_lasers: { min: 0.5, p: (d) => ({ period: lerp(2.6, 2.2, d) }) },
 };
+
+// Endless zones: every few obstacles the run enters a new themed family that reshapes the
+// obstacle mix (and sometimes the pace). Each zone starts at a calm "zone gate" breather.
+export const ZONES = [
+  { id: 'warmup', name: 'WARM-UP', sub: 'Find your rhythm', cats: [], first: true },
+  { id: 'machine', name: 'MACHINE ZONE', sub: 'Gears, pistons and crushers', cats: ['Mechanical'] },
+  { id: 'rush', name: 'RUSH HOUR', sub: 'Everything is moving', cats: ['Moving'], speed: 1.06 },
+  { id: 'air', name: 'AIR TIME', sub: 'Big jumps - stick the landings', cats: ['Jumps'] },
+  { id: 'physics', name: 'PHYSICS PLAYGROUND', sub: 'Smash it, push it, ride it', cats: ['Physics'] },
+  { id: 'nerves', name: 'NERVES OF STEEL', sub: 'Narrow tracks, zero margin', cats: ['Narrow Track'] },
+  { id: 'strange', name: 'STRANGE SKIES', sub: 'Gravity is optional', cats: ['Special'] },
+  { id: 'spectacle', name: 'SPECTACLE', sub: 'The giant machines wake up', cats: ['Set Piece'], spectacle: true, min: 0.12 },
+  { id: 'overdrive', name: 'OVERDRIVE', sub: '+10% speed - hold on!', cats: ['Moving', 'Jumps'], speed: 1.1, min: 0.3 },
+];
 
 const ENDLESS_THEMES = ['metropolis', 'neon', 'coastal', 'construction', 'architect', 'clouds', 'harbor', 'alpine', 'desert', 'factory'];
 
@@ -99,6 +132,7 @@ export class EndlessGenerator {
     this.count = 0;
     this.sinceBreather = 0;
     this.distance = 0;
+    this.zone = ZONES[0]; this.zoneHistory = ['warmup'];
     this.sectionSeed = this.seed;
   }
 
@@ -123,9 +157,11 @@ export class EndlessGenerator {
       if (cfg.bonus) continue;
       if (cfg.dy && this.dy + cfg.dy < -22) continue; // keep the track up in the sky
       if (cfg.dy && this.dy + cfg.dy > 24) continue;
-      if (cfg.spectacle && this.r() > 0.25) continue; // rare set pieces
+      if (cfg.spectacle && this.r() > (this.zone.spectacle ? 0.85 : 0.25)) continue; // rare set pieces
       let w = 1;
-      if (REGISTRY[id].category === lastCat) w *= 0.35;
+      const cat = REGISTRY[id].category;
+      if (cat === lastCat && !this.zone.cats.includes(cat)) w *= 0.35;
+      if (this.zone.cats.includes(cat)) w *= 4;
       const diff = (REGISTRY[id].difficulty || 2) / 5;
       w *= 1 - Math.abs(diff - (0.25 + d * 0.65)) * 0.8;
       // newer unlocks get a slight boost so the variety keeps evolving
@@ -137,6 +173,15 @@ export class EndlessGenerator {
     let x = this.r() * tot;
     for (const [id, w] of cands) { x -= w; if (x <= 0) return id; }
     return cands[cands.length - 1][0];
+  }
+
+  // next themed zone: unlocked by difficulty, never one of the last three
+  pickZone(d) {
+    const recent = new Set(this.zoneHistory.slice(-3));
+    const opts = ZONES.filter((z) => !z.first && !recent.has(z.id) && (z.min || 0) <= d + 0.05);
+    const z = opts.length ? opts[Math.floor(this.r() * opts.length)] : ZONES[1];
+    this.zone = z; this.zoneHistory.push(z.id);
+    return { id: z.id, name: z.name, sub: z.sub, speed: z.speed || 1, n: this.zoneHistory.length };
   }
 
   // Generate the next chunk of section definitions.
@@ -162,8 +207,9 @@ export class EndlessGenerator {
     // breather / bonus every few obstacles
     if (this.sinceBreather >= 5 + Math.floor(this.r() * 3)) {
       this.sinceBreather = 0;
-      if (this.r() < 0.5) out.push(this.def('gold_rush', { gem: false, len: 26 }));
-      else out.push(this.def('runway', { len: 12, coins: true, arrows: true }));
+      const gate = this.r() < 0.5 ? this.def('gold_rush', { gem: false, len: 26 }) : this.def('runway', { len: 12, coins: true, arrows: true });
+      gate.zone = this.pickZone(d);
+      out.push(gate);
       return out;
     }
     // obstacle

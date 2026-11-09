@@ -6,9 +6,11 @@ import { JUMPS } from './jumps.js';
 import { MECHANICAL } from './mechanical.js';
 import { PHYSICS } from './physicsfx.js';
 import { SPECIAL } from './special.js';
+import { SETPIECES } from './setpieces.js';
+import { SETPIECES2 } from './setpieces2.js';
 
 export const REGISTRY = {};
-const all = [...STRUCTURE, ...TRACK, ...MOVING, ...JUMPS, ...MECHANICAL, ...PHYSICS, ...SPECIAL];
+const all = [...STRUCTURE, ...TRACK, ...MOVING, ...JUMPS, ...MECHANICAL, ...PHYSICS, ...SPECIAL, ...SETPIECES, ...SETPIECES2];
 for (const o of all) {
   if (REGISTRY[o.id]) throw new Error('Duplicate obstacle id ' + o.id);
   o.kind = o.kind || 'obstacle';

@@ -7,6 +7,7 @@ import { R, Physics } from '../core/physics.js';
 import { MaterialLib, boxUV } from '../gfx/materials.js';
 import { Environment, THEMES } from '../gfx/environments.js';
 import { rng as makeRng } from '../gfx/textures.js';
+import { MegaStructures } from '../gfx/megastructures.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _v = new THREE.Vector3();
@@ -23,11 +24,27 @@ export class PathTrack {
   push(pos, sec) {
     const n = this.p.length;
     if (n > 0) {
-      const d = pos.distanceTo(this.p[n - 1]);
+      const last = this.p[n - 1];
+      const d = pos.distanceTo(last);
       if (d < 0.25) return;
+      // keep samples dense (<= ~1 m) so nearest() never snaps onto an overlapping part of
+      // the course (e.g. the top of a loop above its own exit deck) across a long straight
+      if (d > 1.5) {
+        const k = Math.ceil(d), from = last.clone();
+        for (let j = 1; j < k; j++) this._add(from.clone().lerp(pos, j / k), sec, d / k);
+        this._add(pos.clone(), sec, d / k);
+        return;
+      }
       this.length += d;
     }
     this.p.push(pos.clone()); this.s.push(this.length); this.sec.push(sec);
+    this.t.push(new THREE.Vector3(0, 0, -1)); this.r.push(new THREE.Vector3(1, 0, 0));
+    this._fixTangent(n); if (n > 0) this._fixTangent(n - 1);
+  }
+  _add(p, sec, step) {
+    const n = this.p.length;
+    this.length += step;
+    this.p.push(p); this.s.push(this.length); this.sec.push(sec);
     this.t.push(new THREE.Vector3(0, 0, -1)); this.r.push(new THREE.Vector3(1, 0, 0));
     this._fixTangent(n); if (n > 0) this._fixTangent(n - 1);
   }
@@ -577,6 +594,16 @@ export class SectionBuilder {
   supportLocal(lx, ly, lz) { const p = new THREE.Vector3(lx, ly, lz).applyMatrix4(this.group.matrixWorld); this.course.supports.add(p.x, p.y, p.z, this.index, this.yaw); }
   exit(x, y, d, h = 0) { this.exitLocal = { x, y, d, h }; }
   kill(reason) { const g = this.course.game; if (g && g.killBall) g.killBall(reason); }
+  get game() { return this.course.game; }
+  get goTime() { const g = this.course.game; return g && g.goTime != null ? g.goTime : 0; }
+  // play a mechanical sound if the ball is near (x, d) in local coords
+  sfxNear(name, x, d, k = 1, range = 32) {
+    const b = this.ballLocal(); if (!b) return;
+    const dist = Math.hypot(b.x - x, b.d - d);
+    if (dist < range) this.course.game.sfx(name, k * (1 - dist / range));
+  }
+  trick(label, points, o) { const g = this.course.game; if (g && g.trick) g.trick(label, points, o); }
+  hintText(key, desk, touch) { const g = this.course.game; if (g && g.hint) g.hint(key, g.input.isTouch ? touch : desk); }
   get ball() { return this.course.game.ball; }
   // ball position in this section's local coords (x right, y up, d forward)
   ballLocal() { const b = this.course.game.ball; return b && b.body ? this.toLocal(b.curPos) : null; }
@@ -643,6 +670,7 @@ export class Course {
     this.registry = null;
     this.firstActive = 0;
     this.lastEnvSample = null;
+    this.megas = new MegaStructures(this);
   }
 
   addSection(def, registry) {
@@ -664,6 +692,7 @@ export class Course {
       index, type: def.type, def, ob, B, group: B.group, body: B.body,
       movers: B.movers, dyns: B.dyns, sets: B.sets, updaters: B.updaters, resetters: B.resetters, triggers: B.triggers,
       jump: B.jump, cam: B.cam, hint: B.hint, speedMul: B.speedMul, checkpoint: !!ob.checkpoint || !!def.checkpoint,
+      freeRoll: B.freeRoll || null, noJump: !!B.noJump, setPiece: !!ob.setPiece,
       s0: this.path.length, s1: 0, gems: [], name: ob.name, category: ob.category, isFinish: !!ob.finish,
     };
     // path
@@ -688,6 +717,7 @@ export class Course {
     this.frame = { pos: B.W(ex.x, ex.y, ex.d), yaw: this.frame.yaw - ex.h };
     this.sections.push(sec);
     this.env.markDirty();
+    if (this.theme.scenery !== 'factory') this.megas.extend(sec);
     return sec;
   }
 
@@ -706,6 +736,7 @@ export class Course {
     this.physics.removeBody(sec.body);
     this.coins.releaseOwner(sec.index);
     this.supports.releaseOwner(sec.index);
+    this.megas.release(sec.index);
     for (const g of this.gems) if (g.section === sec.index && g.mesh.parent) { this.root.remove(g.mesh); }
   }
 
@@ -728,6 +759,7 @@ export class Course {
 
   // per render frame: dynamic body visuals, visibility culling
   frameUpdate(ballPos, ballS) {
+    this.megas.update(this.game.time, ballPos);
     const m = _m; const s = new THREE.Vector3();
     for (const sec of this.sections) {
       if (sec.removed) continue;
@@ -772,6 +804,7 @@ export class Course {
     this.engine.scene.remove(this.root);
     this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     this.coins.mesh.dispose();
+    this.megas.dispose();
     this.mats.dispose();
     this.env.dispose();
     this.physics.dispose();

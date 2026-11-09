@@ -36,6 +36,20 @@ export class FollowCamera {
 
   shake(a) { this.shakeAmt = Math.min(1.2, Math.max(this.shakeAmt, a)); }
 
+  landKick(k) { this.kick = Math.max(this.kick || 0, k * 0.55); }
+
+  // Sweeping establishing shot that settles behind the ball (READY... GO!).
+  startIntro(ballPos, dir) {
+    this.reset(ballPos, dir);
+    const side = new THREE.Vector3().crossVectors(dir, UP).normalize();
+    this.introFrom = ballPos.clone().addScaledVector(dir, 16).addScaledVector(UP, 9).addScaledVector(side, 9);
+    this.introLook = ballPos.clone().addScaledVector(dir, 4);
+    this.introT = 0;
+    this.mode = 'intro';
+    this.cam.position.copy(this.introFrom);
+    this.cam.lookAt(ballPos);
+  }
+
   // pathDir: averaged course direction ahead of the ball; hint: per-section camera hint
   update(dt, ball, pathDir, hint, physics, opts = {}) {
     const bp = ball.mesh.position;
@@ -45,6 +59,17 @@ export class FollowCamera {
       this.look.lerp(bp, k(6));
       this.cam.position.copy(this.pos);
       this.cam.lookAt(this.look);
+      return;
+    }
+    if (this.mode === 'intro') {
+      this.introT += dt;
+      const u = Math.min(1, this.introT / 1.3); const e = u * u * (3 - 2 * u);
+      this.tmp.copy(bp).addScaledVector(this.dir, -this.dist).addScaledVector(UP, this.height);
+      this.pos.lerpVectors(this.introFrom, this.tmp, e);
+      this.look.copy(bp).lerp(this.tmp2.copy(bp).addScaledVector(this.dir, this.lookAhead).addScaledVector(UP, 0.4), e);
+      this.cam.position.copy(this.pos);
+      this.cam.lookAt(this.look);
+      this.focusY = bp.y;
       return;
     }
     if (this.mode === 'cinematic') {
@@ -71,7 +96,9 @@ export class FollowCamera {
       this.cam.lookAt(bp);
       return;
     }
-    const tDist = hint?.dist ?? this.dist, tH = hint?.height ?? this.height, tFov = (hint?.fov ?? this.fov) + Math.min(10, Math.max(0, ball.speed - 10) * 0.7) + (ball.boostT > 0 ? 6 : 0);
+    const airK = ball.grounded ? 0 : Math.min(1, Math.max(0, (ball.airTime - 0.3) / 0.6));
+    const tDist = (hint?.dist ?? this.dist) + airK * 2.2, tH = (hint?.height ?? this.height) + airK * 1.3;
+    const tFov = (hint?.fov ?? this.fov) + Math.min(12, Math.max(0, ball.speed - 11) * 0.8) + (ball.boosting ? 7 : 0) + airK * 5;
     this.curDist += (tDist - this.curDist) * k(2.2);
     this.curHeight += (tH - this.curHeight) * k(2.2);
     this.curFov += (tFov - this.curFov) * k(3);
@@ -102,7 +129,9 @@ export class FollowCamera {
     this.shakeT += dt;
     this.shakeAmt = Math.max(0, this.shakeAmt - dt * 2.2);
     const sa = this.shakeAmt * this.shakeAmt * 0.35 * (opts.shake === false ? 0 : 1);
+    this.kick = Math.max(0, (this.kick || 0) - dt * 2.5);
     this.cam.position.copy(this.pos);
+    if (this.kick > 0) this.cam.position.y -= Math.sin(Math.min(1, this.kick) * Math.PI) * 0.35;
     if (sa > 0) this.cam.position.add(this.tmp.set(Math.sin(this.shakeT * 53) * sa, Math.sin(this.shakeT * 61 + 1) * sa, Math.sin(this.shakeT * 47 + 2) * sa));
     this.cam.lookAt(this.look);
     if (Math.abs(this.engine.baseFov - this.curFov) > 0.05) this.engine.applyFov(this.curFov);

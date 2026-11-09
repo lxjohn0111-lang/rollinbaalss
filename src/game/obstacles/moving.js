@@ -270,7 +270,8 @@ export const MOVING = [
           return 0;
         };
         const reach = p.reach || 2.9;
-        B.onUpdate((t) => { m.obj.position.x = side * (W / 2 + 0.05 - ext(t) * reach); });
+        let out = false;
+        B.onUpdate((t) => { const e = ext(t); m.obj.position.x = side * (W / 2 + 0.05 - e * reach); if (e > 0.5 && !out) { out = true; B.sfxNear('hiss', side * 2, dc, 0.7, 26); } else if (e < 0.1) out = false; });
         pist.push({ side, dc, ext, reach });
         B.coin(-side * 1.3, 0.65, dc);
       }
@@ -306,8 +307,10 @@ export const MOVING = [
             if (u < 0.75) return 4.6 * smooth((u - 0.3) / 0.45);
             return 4.6;
           };
+          let wasUp = true;
           B.onUpdate((t) => {
             const y = h(t); m.obj.position.y = y;
+            if (y < 0.05 && wasUp) { wasUp = false; if (l === 1) B.sfxNear('slam', x, dc, 0.8, 30); } else if (y > 1) wasUp = true;
             if (y < 0.75) { const b = B.ballLocal(); if (b && Math.abs(b.x - x) < lw / 2 - 0.05 && Math.abs(b.d - dc) < 0.95 && b.y < 1.2 && b.y > -0.5) B.kill('crushed'); }
           });
           cr.push({ x, dc, h });
@@ -443,8 +446,10 @@ export const MOVING = [
           if (u < 0.1) k = 1 - (u / 0.1) * (u / 0.1); else if (u < 0.32) k = 0; else if (u < 0.75) k = smooth((u - 0.32) / 0.43); else k = 1;
           return k; // 1 = raised, 0 = down
         };
+        let slammed = false;
         B.onUpdate((t) => {
           const k = ang(t);
+          if (k < 0.02 && !slammed) { slammed = true; B.sfxNear('slam', hx, dc, 0.9, 30); } else if (k > 0.5) slammed = false;
           m.obj.rotation.z = side * -k * (Math.PI / 2) * 0.95;
           if (k < 0.12) { const b = B.ballLocal(); if (b && Math.abs(b.d - dc) < 1.05 && side * (b.x - hx) < 0 && Math.abs(b.x - (hx - side * 2.5)) < 0.8 && b.y < 1.0) B.kill('smashed'); }
         });

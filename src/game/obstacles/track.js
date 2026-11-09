@@ -100,9 +100,9 @@ export const TRACK = [
       pad(B, 0, 4, W);
       B.ribbon((u) => ({ x: 0, y: 0, d: 4 + 3 * u, w: lerp(W, bw, smooth(u)) }), 6, W, 0.5, B.m.deck, { path: true });
       B.deck(0, 7, 7 + len, bw, { edges: true, edgeMat: B.m.steel, supportStep: 9 });
+      B.pathLine(0, 7, 0, 7 + len);
       B.ribbon((u) => ({ x: 0, y: 0, d: 7 + len + 3 * u, w: lerp(bw, W, smooth(u)) }), 6, W, 0.5, B.m.deck, { path: true });
       pad(B, 10 + len, 13 + len, W);
-      B.pathLine(0, 7, 0, 7 + len);
       B.coinLine(0, 8, 0, 6 + len, Math.floor(len / 2));
       if (p.gem) B.gem(0, 1.0, 7 + len / 2);
       B.hint = () => ({ lat: 0 });

@@ -29,7 +29,21 @@ export class Bot {
     if (Math.abs(err) > 1.2) this.integral *= 0.98;
     const steer = clamp(err * 1.25 - latVel * 0.1 + this.integral, -1, 1);
     this.lastTarget = tl;
-    return { steer, jump: !!target.jump, accel: !!target.accel, brake: !!target.brake };
+    // speed: follow the section's advised cruise speed, brake to wait out timed hazards
+    const vCur = target.speed ?? ball.baseSpeed * ball.speedMul * (sec.speedMul || 1) * (target.accel ? 1.15 : 1);
+    let vT = vCur, slowAhead = false;
+    // look further ahead: slow down early for sections that want less speed
+    const nxt = course.sectionAtS(ball.s + Math.max(8, v * 1.3));
+    if (nxt !== sec && nxt.speedMul && nxt.speedMul < (sec.speedMul || 1) && !(nxt.hint && sec === nxt)) {
+      const vN = ball.baseSpeed * ball.speedMul * nxt.speedMul + 1;
+      if (vN < vT) { vT = vN; slowAhead = true; }
+    }
+    const vf = ball.vel.dot(ball.fwd);
+    let throttle = clamp((vT - vf) * 0.6 + 0.08, 0, 1);
+    const margin = slowAhead ? 1.5 : 3;
+    if (vf > vT + margin && (slowAhead || ball.boostT <= 0)) throttle = -clamp((vf - vT - margin) * 0.35, 0, 1);
+    if (target.brake) throttle = vf > 2.5 ? -1 : 0.15;
+    return { steer, throttle, jump: !!target.jump, boost: !!target.boost };
   }
 
   planLanes(B, local, ctx) {
@@ -51,6 +65,6 @@ export class Bot {
       if (score > bestScore) { bestScore = score; best = c; }
     }
     this.plan = best;
-    return { lat: ctx.lat + (best - local.x) };
+    return { lat: ctx.lat + (best - local.x), brake: !B.noWait && bestScore < -2.2 };
   }
 }

@@ -80,8 +80,8 @@ export class MaterialLib {
     add('dark', std({ color: 0x1d1f24, roughness: 0.6, metalness: 0.3 }));
     add('rope', std({ color: 0xa07a48, roughness: 0.95 }));
     const coin = T.coinFace();
-    add('coin', std({ map: coin.map, normalMap: coin.normalMap, color: 0xffffff, metalness: 1.0, roughness: 0.22, emissive: 0x5a3600, emissiveIntensity: 0.35 }));
-    add('coinEdge', std({ color: 0xffb627, metalness: 1.0, roughness: 0.25, emissive: 0x4a2a00, emissiveIntensity: 0.3 }));
+    add('coin', std({ map: coin.map, normalMap: coin.normalMap, color: 0xffffff, metalness: 1.0, roughness: 0.22, emissive: 0xa86400, emissiveIntensity: 0.6 }));
+    add('coinEdge', std({ color: 0xffb627, metalness: 1.0, roughness: 0.25, emissive: 0xa86400, emissiveIntensity: 0.55 }));
     add('gem', new THREE.MeshPhysicalMaterial({ color: 0x9a5bff, metalness: 0.0, roughness: 0.05, clearcoat: 1, emissive: 0x5a1fd0, emissiveIntensity: 0.9, transparent: true, opacity: 0.95 }));
     this.all.push(this.gem);
     // Block palette for knock-down structures

@@ -6,7 +6,7 @@ const [,, id, secs = '12', every = '0.25', params = '{}'] = process.argv;
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 320, height: 200 } });
 page.on('pageerror', (e) => console.log('ERR', e.message));
-await page.goto('http://localhost:5173/?test=1&q=low&bot=1');
+await page.goto((process.env.URL || 'http://localhost:5173/') + '?test=1&q=low&bot=1');
 await page.waitForFunction(() => window.__ready, null, { timeout: 60000 });
 const out = await page.evaluate(({ id, secs, every, params }) => {
   const g = window.__game;
